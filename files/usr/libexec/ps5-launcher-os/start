@@ -12,6 +12,25 @@ if [ ! -x "$bin" ]; then
     "$seed/install.sh" >>"$log" 2>&1 || cp "$seed/ps5-launcher" "$bin" 2>>"$log"
 fi
 [ -x "$bin" ] || bin="$seed/ps5-launcher"
+
+# Console power settings, once per user. At first login Plasma migrates Bazzite's power profile
+# into the user's own powerdevilrc (screen dims and turns off when idle), which overrides
+# /etc/xdg. Controllers don't count as activity, so the screen would go dark while someone
+# browses with one. Applied after that migration has run; later changes by the user are kept.
+power_done="$HOME/.config/ps5-launcher-os/power-settings-applied"
+if [ ! -e "$power_done" ]; then
+    (
+        sleep 20
+        for key in DimDisplayWhenIdle TurnOffDisplayWhenIdle; do
+            kwriteconfig6 --file powerdevilrc --group AC --group Display --key "$key" false
+        done
+        kwriteconfig6 --file powerdevilrc --group AC --group SuspendAndShutdown --key AutoSuspendAction 0
+        dbus-send --session --dest=org.kde.Solid.PowerManagement /org/kde/Solid/PowerManagement \
+            org.kde.Solid.PowerManagement.reparseConfiguration
+        mkdir -p "${power_done%/*}" && touch "$power_done"
+        echo "$(date -Is) console power settings applied" >>"$log"
+    ) >>"$log" 2>&1 &
+fi
 # Run everything on XWayland: the launcher switches between itself and running games with
 # xdotool, which only sees X11 windows. Unsetting WAYLAND_DISPLAY is enough for the launcher, but
 # toolkits also try Wayland's default socket, so the emulators' SDL3 (KytyPS5, shadPS4) and Qt
