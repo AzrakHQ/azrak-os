@@ -15,9 +15,12 @@ RUN set -eux; \
     dnf5 clean all; \
     chmod 0755 /usr/libexec/ps5-launcher-os/start /usr/share/ps5-launcher-os/release/ps5-launcher \
         /usr/share/ps5-launcher-os/release/install.sh; \
-    # First-login pop-ups would cover the launcher.
+    # Nothing may open over the launcher: first-login pop-ups, and Steam, which the living-room
+    # edition starts (and updates) at every login. Steam stays in the app menu.
     rm -f /etc/xdg/autostart/org.kde.plasma-welcome.desktop /etc/xdg/autostart/bazzite-announcement.desktop \
-          /etc/skel/.config/autostart/bazzite-portal.desktop; \
+          /etc/skel/.config/autostart/bazzite-portal.desktop /etc/xdg/autostart/steam.desktop; \
+    # "Return to Gaming Mode" would make every later boot start Steam instead of the launcher.
+    rm -f /etc/skel/Desktop/Return.desktop; \
     /usr/share/ps5-launcher-os/release/ps5-launcher --version; \
     rm -rf /var/cache/* /var/log/* /tmp/*; \
     bootc container lint || true

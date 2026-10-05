@@ -12,7 +12,10 @@ if [ ! -x "$bin" ]; then
     "$seed/install.sh" >>"$log" 2>&1 || cp "$seed/ps5-launcher" "$bin" 2>>"$log"
 fi
 [ -x "$bin" ] || bin="$seed/ps5-launcher"
-# Run on XWayland: the launcher switches between itself and running games with xdotool, which
-# only sees X11 windows. Games started from it inherit this and open on XWayland too.
+# Run everything on XWayland: the launcher switches between itself and running games with
+# xdotool, which only sees X11 windows. Unsetting WAYLAND_DISPLAY is enough for the launcher, but
+# toolkits also try Wayland's default socket, so the emulators' SDL3 (KytyPS5, shadPS4) and Qt
+# are told explicitly; games inherit this.
 unset WAYLAND_DISPLAY
+export SDL_VIDEO_DRIVER=x11 SDL_VIDEODRIVER=x11 QT_QPA_PLATFORM=xcb GDK_BACKEND=x11
 exec "$bin"

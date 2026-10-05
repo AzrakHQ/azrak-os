@@ -1,2 +1,9 @@
+# A console is used with a controller, which Plasma doesn't count as activity: without this the
+# screen would dim and turn off while someone browses the launcher. The TV handles its own standby.
+# Never suspend on mains power either, so downloads keep going.
+[AC][Display]
+DimDisplayWhenIdle=false
+TurnOffDisplayWhenIdle=false
+
 [AC][SuspendAndShutdown]
 AutoSuspendAction=0
