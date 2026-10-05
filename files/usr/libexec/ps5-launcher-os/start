@@ -1,0 +1,18 @@
+#!/usr/bin/bash
+# Opens PS5 Launcher when the console's session starts (/etc/xdg/autostart/ps5-launcher-os.desktop).
+# The launcher lives in the user's home folder so it can update itself; the copy in the OS image
+# only installs it the first time (or if it was removed).
+set -u
+bin="$HOME/.local/bin/ps5-launcher"
+seed=/usr/share/ps5-launcher-os/release
+log="$HOME/.cache/ps5-launcher-os.log"
+mkdir -p "$HOME/.cache"
+if [ ! -x "$bin" ]; then
+    echo "$(date -Is) installing PS5 Launcher from the OS image" >>"$log"
+    "$seed/install.sh" >>"$log" 2>&1 || cp "$seed/ps5-launcher" "$bin" 2>>"$log"
+fi
+[ -x "$bin" ] || bin="$seed/ps5-launcher"
+# Run on XWayland: the launcher switches between itself and running games with xdotool, which
+# only sees X11 windows. Games started from it inherit this and open on XWayland too.
+unset WAYLAND_DISPLAY
+exec "$bin"
