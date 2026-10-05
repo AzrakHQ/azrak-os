@@ -9,9 +9,9 @@ FROM ${BASE_IMAGE}
 COPY launcher/ /usr/share/ps5-launcher-os/release/
 COPY files/ /
 
-# xdotool: switching between the launcher and a running game. mpv + yt-dlp: trailers.
+# xdotool: switching between the launcher and a running game. mpv-libs (libmpv) + yt-dlp: trailers.
 RUN set -eux; \
-    dnf5 -y install xdotool mpv yt-dlp; \
+    dnf5 -y install xdotool mpv mpv-libs yt-dlp; \
     dnf5 clean all; \
     chmod 0755 /usr/libexec/ps5-launcher-os/start /usr/share/ps5-launcher-os/release/ps5-launcher \
         /usr/share/ps5-launcher-os/release/install.sh; \
