@@ -19,9 +19,18 @@ fi
 curl -fsSL --retry 3 -o "$cache/CHECKSUM" "$base/Fedora-Everything-$version-x86_64-CHECKSUM"
 (cd "$cache" && sha256sum -c --ignore-missing CHECKSUM | grep -q ": OK")
 
-ks=$(mktemp --suffix=.ks)
+ks=$(mktemp -d)/ps5-launcher-os.ks
 cat os/ps5-launcher-os.ks > "$ks"
 [ -n "$extra" ] && cat "$extra" >> "$ks"
 rm -f "$out"
-mkksiso --ks "$ks" -V "PS5-Launcher-OS" "$cache/$iso" "$out"
+# The boot menu names our OS (the installer program is Fedora's; what it installs is
+# Bazzite + PS5 Launcher), starts the plain install after 10 s, and skips the slow media check
+# Fedora runs by default (-r rd.live.check).
+mkksiso --ks "$ks" -V "PS5-Launcher-OS" -r rd.live.check \
+    -R "Install Fedora 44" "Install PS5 Launcher OS" \
+    -R "install Fedora 44" "install PS5 Launcher OS" \
+    -R "Rescue a Fedora system" "Rescue an installed system" \
+    -R 'set default="1"' 'set default="0"' \
+    -R "set timeout=60" "set timeout=10" \
+    "$cache/$iso" "$out"
 ls -la "$out"
