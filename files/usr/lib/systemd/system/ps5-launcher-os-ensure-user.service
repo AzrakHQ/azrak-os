@@ -1,0 +1,11 @@
+[Unit]
+Description=Make sure the console has a user to log in automatically
+Before=bazzite-autologin.service display-manager.service
+After=systemd-user-sessions.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/ps5-launcher-os/ensure-user
+
+[Install]
+WantedBy=multi-user.target

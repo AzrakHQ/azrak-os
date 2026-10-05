@@ -13,7 +13,9 @@ COPY files/ /
 RUN set -eux; \
     dnf5 -y install xdotool mpv mpv-libs yt-dlp; \
     dnf5 clean all; \
-    chmod 0755 /usr/libexec/ps5-launcher-os/start /usr/share/ps5-launcher-os/release/ps5-launcher \
+    systemctl enable ps5-launcher-os-ensure-user.service; \
+    chmod 0755 /usr/libexec/ps5-launcher-os/start /usr/libexec/ps5-launcher-os/ensure-user \
+        /usr/share/ps5-launcher-os/release/ps5-launcher \
         /usr/share/ps5-launcher-os/release/install.sh; \
     # Nothing may open over the launcher: first-login pop-ups, and Steam, which the living-room
     # edition starts (and updates) at every login. Steam stays in the app menu.

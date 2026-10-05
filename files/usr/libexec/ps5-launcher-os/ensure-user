@@ -1,0 +1,10 @@
+#!/usr/bin/bash
+# If the installer finished without creating a user, make one, so the console still logs in by
+# itself (Bazzite's automatic login uses the user with UID 1000). It has no password; one can be
+# set later in System Settings → Users.
+set -eu
+if ! id -nu 1000 >/dev/null 2>&1; then
+    useradd -m -u 1000 -G wheel -c "Player" player
+    passwd -d player
+    echo "created user 'player' for automatic login"
+fi

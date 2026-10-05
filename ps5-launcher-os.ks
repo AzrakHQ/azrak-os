@@ -2,6 +2,11 @@
 # The installer asks for the disk and creates your user; everything else is set here. The OS
 # itself is downloaded from GitHub's container registry, so an internet connection is needed.
 
+# Answered here so the installer only asks for what matters: the disk, your user, and your time
+# zone (for the launcher's clock). No root password: your user can administer the system.
+keyboard --vckeymap=us --xlayouts=us
+rootpw --lock
+
 # The image for this PC: the NVIDIA build when an NVIDIA graphics card is present.
 %pre --log=/tmp/ps5-launcher-os-pre.log
 image=ghcr.io/mohamedalirashad/ps5-launcher-os
