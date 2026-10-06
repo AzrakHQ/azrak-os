@@ -2,6 +2,21 @@
 # The installer asks for the disk and creates your user; everything else is set here. The OS
 # itself is downloaded from GitHub's container registry, so an internet connection is needed.
 
+# "Troubleshooting → Enroll the Secure Boot key again" on the USB stick (kernel argument
+# ps5los.enroll): for when the blue MOK screen was missed after installing (it waits about 5
+# minutes) and the PC no longer starts. Queues the key again and restarts into that screen;
+# nothing is installed.
+%pre --log=/tmp/ps5-launcher-os-enroll.log
+if grep -qw ps5los.enroll /proc/cmdline; then
+    key=$(find /run/install -name ps5-launcher-os-secureboot.der 2>/dev/null | head -1)
+    mokutil --timeout -1 || :
+    printf 'universalblue\nuniversalblue\n' | mokutil --import "$key" || :
+    mokutil --list-new
+    reboot
+    sleep 120
+fi
+%end
+
 # Answered here so the installer only asks for what matters: the disk, your user, and your time
 # zone (for the launcher's clock). No root password: your user can administer the system.
 keyboard --vckeymap=us --xlayouts=us
@@ -21,9 +36,10 @@ echo "ostreecontainer --url=$image:$tag --transport=registry --no-signature-veri
 %end
 %include /tmp/ps5-launcher-os-source.ks
 
-# Bazzite's kernel is signed with Universal Blue's key. With Secure Boot on, queue that key for
-# enrollment: after the restart a blue "MOK management" screen asks to enroll it (password
-# universalblue). With Secure Boot off, nothing is shown.
+# Bazzite's kernel is signed with Universal Blue's key (on the ISO, checked when it was built).
+# With Secure Boot on, queue it for enrollment: after the restart a blue "MOK management" screen
+# asks to enroll it (password universalblue; it waits about 5 minutes). With Secure Boot off,
+# nothing is shown.
 %post --nochroot --log=/tmp/ps5-launcher-os-secureboot.log
 set -u
 if [ ! -d /sys/firmware/efi ] || ! command -v mokutil >/dev/null; then
@@ -32,8 +48,12 @@ fi
 if ! mokutil --sb-state 2>/dev/null | grep -qi "SecureBoot enabled"; then
     echo "Secure Boot is off: nothing to enroll"; exit 0
 fi
-key=/tmp/ublue-secure-boot.der
-curl -fsSL --retry 3 -o "$key" https://github.com/ublue-os/akmods/raw/main/certs/public_key.der || exit 0
+key=$(find /run/install -name ps5-launcher-os-secureboot.der 2>/dev/null | head -1)
+if [ -z "$key" ]; then
+    key=/tmp/ublue-secure-boot.der
+    curl -fsSL --retry 3 -o "$key" https://github.com/ublue-os/akmods/raw/main/certs/public_key.der || exit 0
+fi
 mokutil --timeout -1 || :
 printf 'universalblue\nuniversalblue\n' | mokutil --import "$key" || :
+mokutil --list-new
 %end

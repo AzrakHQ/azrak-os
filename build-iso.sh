@@ -19,6 +19,13 @@ fi
 curl -fsSL --retry 3 -o "$cache/CHECKSUM" "$base/Fedora-Everything-$version-x86_64-CHECKSUM"
 (cd "$cache" && sha256sum -c --ignore-missing CHECKSUM | grep -q ": OK")
 
+# Universal Blue's kernel-signing key, which Bazzite's kernel needs with Secure Boot on.
+key_url=https://github.com/ublue-os/akmods/raw/main/certs/public_key.der
+key_sha256=4e5c68474cb133fd8984d9599762cece9100c3e6cd8a9709aeaabd85dd9e70d1
+files=$(mktemp -d)
+curl -fsSL --retry 3 -o "$files/ps5-launcher-os-secureboot.der" "$key_url"
+echo "$key_sha256  $files/ps5-launcher-os-secureboot.der" | sha256sum -c -
+
 ks=$(mktemp -d)/ps5-launcher-os.ks
 cat os/ps5-launcher-os.ks > "$ks"
 [ -n "$extra" ] && cat "$extra" >> "$ks"
@@ -29,7 +36,9 @@ rm -f "$out"
 mkksiso --ks "$ks" -V "PS5-Launcher-OS" -r rd.live.check \
     -R "Install Fedora 44" "Install PS5 Launcher OS" \
     -R "install Fedora 44" "install PS5 Launcher OS" \
-    -R "Rescue a Fedora system" "Rescue an installed system" \
+    -R "Rescue a Fedora system" "Enroll the Secure Boot key again" \
+    -R "inst.rescue" "ps5los.enroll" \
+    -a "$files/ps5-launcher-os-secureboot.der" \
     -R 'set default="1"' 'set default="0"' \
     -R "set timeout=60" "set timeout=10" \
     "$cache/$iso" "$out"
