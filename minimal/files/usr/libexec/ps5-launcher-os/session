@@ -1,0 +1,49 @@
+#!/usr/bin/bash
+# The whole session on PS5 Launcher OS (minimal edition): Gamescope, full screen on the TV, with
+# PS5 Launcher in it. greetd starts this for "player" at boot (/etc/greetd/config.toml).
+#
+# The launcher lives in the user's home folder so it can update itself; the copy in the OS image
+# only installs it the first time (or if it was removed).
+set -u
+bin="$HOME/.local/bin/ps5-launcher"
+seed=/usr/share/ps5-launcher-os/release
+log="$HOME/.cache/ps5-launcher-os.log"
+mkdir -p "$HOME/.cache"
+if [ ! -x "$bin" ]; then
+    echo "$(date -Is) installing PS5 Launcher from the OS image" >>"$log"
+    "$seed/install.sh" >>"$log" 2>&1 || { mkdir -p "${bin%/*}" && cp "$seed/ps5-launcher" "$bin"; } 2>>"$log"
+fi
+[ -x "$bin" ] || bin="$seed/ps5-launcher"
+
+# Games and the launcher run on Gamescope's X server: the launcher switches between itself and a
+# game through Gamescope's Steam mode (-e), which works with X11 windows. SDL (the emulators) and
+# Qt are told so explicitly; games inherit this.
+export SDL_VIDEO_DRIVER=x11 SDL_VIDEODRIVER=x11 QT_QPA_PLATFORM=xcb GDK_BACKEND=x11
+# If the launcher quits or crashes, start it again rather than leave a black screen. If Gamescope
+# itself can't start (a graphics card it can't drive, no Vulkan driver), show the launcher in a
+# plain kiosk display instead, where Settings → This PC says what's missing; games won't start
+# there, but the screen isn't black.
+failures=0
+while true; do
+    started=$(date +%s)
+    if [ "$failures" -lt 2 ]; then
+        echo "$(date -Is) starting in Gamescope" >>"$log"
+        gamescope -e --xwayland-count 1 -- "$bin" >>"$log" 2>&1
+        if [ $(( $(date +%s) - started )) -lt 15 ]; then failures=$((failures + 1)); else failures=0; fi
+    else
+        echo "$(date -Is) Gamescope can't run on this graphics card; starting in a basic display" >>"$log"
+        cage -s -- "$bin" >>"$log" 2>&1 &
+        kiosk=$!
+        # cage doesn't always notice its app ending (it would sit on a black screen): end it once
+        # the launcher is gone, so the loop starts both again.
+        while sleep 2 && kill -0 "$kiosk" 2>/dev/null; do
+            running=
+            for pid in $(pgrep -P "$kiosk" -x ps5-launcher); do
+                [ "$(cut -d' ' -f3 "/proc/$pid/stat" 2>/dev/null)" != Z ] && running=1
+            done
+            [ -n "$running" ] || { kill "$kiosk"; break; }
+        done
+        wait "$kiosk"
+    fi
+    sleep 2
+done

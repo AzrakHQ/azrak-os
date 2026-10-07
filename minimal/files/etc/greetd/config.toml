@@ -1,0 +1,11 @@
+# Log "player" straight into the console session at boot, and again if it ever ends.
+[terminal]
+vt = 1
+
+[initial_session]
+command = "/usr/libexec/ps5-launcher-os/session"
+user = "player"
+
+[default_session]
+command = "/usr/libexec/ps5-launcher-os/session"
+user = "player"

@@ -1,0 +1,10 @@
+# How `bootc install` sets up a PC (Settings → Install to this PC, or the live USB's installer).
+[install.filesystem.root]
+type = "xfs"
+
+[install]
+# A console screen: no kernel messages or blinking cursor before the launcher appears.
+kargs = ["quiet", "loglevel=3", "rd.udev.log_level=3", "systemd.show_status=auto", "vt.global_cursor_default=0",
+    # The EFI partition must not be mounted over /boot (systemd does that when /boot is no
+    # partition of its own): updates write there, and fail to finish otherwise.
+    "systemd.gpt_auto=0"]

@@ -1,0 +1,55 @@
+# PS5 Launcher OS, minimal edition: Fedora's bootable container base with only what a console
+# needs (drivers and firmware, Gamescope, networking, Bluetooth, sound) and PS5 Launcher as the
+# whole screen. No desktop: the launcher's Settings → System does Wi-Fi, pairing, sound output,
+# updates and power. Updates replace the whole system atomically (bootc), with the previous one
+# kept in the boot menu. Build from os/:  podman build -f minimal/Containerfile os
+ARG BASE_IMAGE=quay.io/fedora/fedora-bootc:44
+FROM ${BASE_IMAGE}
+
+RUN set -eux; \
+    dnf5 -y install --setopt=install_weak_deps=False \
+        # Display: Gamescope with its X server; Mesa covers AMD, Intel and (NVK) NVIDIA.
+        gamescope xorg-x11-server-Xwayland greetd cage \
+        mesa-dri-drivers mesa-vulkan-drivers vulkan-loader mesa-libEGL mesa-libGL libglvnd-gles libglvnd-opengl \
+        # Firmware for graphics cards, Wi-Fi, Bluetooth and sound.
+        linux-firmware amd-gpu-firmware intel-gpu-firmware nvidia-gpu-firmware amd-ucode-firmware \
+        iwlwifi-mvm-firmware iwlwifi-dvm-firmware atheros-firmware brcmfmac-firmware mt7xxx-firmware \
+        realtek-firmware intel-audio-firmware alsa-sof-firmware \
+        # Network, Bluetooth, sound.
+        NetworkManager NetworkManager-wifi wpa_supplicant bluez \
+        pipewire pipewire-pulseaudio pipewire-alsa wireplumber alsa-ucm pulseaudio-utils \
+        # What the launcher and the emulators load (X11/Wayland, audio, input, archives, trailers).
+        libX11 libXext libXcursor libXi libXfixes libXrandr libXScrnSaver libXtst \
+        libxkbcommon libxkbcommon-x11 libwayland-client libwayland-cursor libwayland-egl \
+        alsa-lib pulseaudio-libs dbus-libs libuuid libcap libarchive mpv-libs yt-dlp \
+        xdotool xprop \
+        fontconfig google-noto-sans-fonts google-noto-sans-arabic-fonts google-noto-emoji-fonts; \
+    dnf5 clean all
+
+# Shown in Settings → System (the workflow passes the build date). Declared after the packages so
+# a new version doesn't download them all again.
+ARG VERSION=dev
+
+# The latest launcher release (unpacked by the workflow into os/launcher). It only seeds the
+# player's own copy in ~/.local/bin, which then updates itself.
+COPY launcher/ /usr/share/ps5-launcher-os/release/
+COPY minimal/files/ /
+
+RUN set -eux; \
+    chmod 0755 /usr/libexec/ps5-launcher-os/session /usr/share/ps5-launcher-os/release/ps5-launcher \
+        /usr/share/ps5-launcher-os/release/install.sh; \
+    # Tells the launcher it's the whole system (Settings → System).
+    mkdir -p /usr/lib/ps5-launcher-os; \
+    /usr/share/ps5-launcher-os/release/ps5-launcher --version | tee /usr/lib/ps5-launcher-os/release; \
+    systemctl enable greetd.service NetworkManager.service bluetooth.service ps5-launcher-os-update.timer; \
+    systemctl set-default graphical.target; \
+    # Fedora's update timer restarts the PC by itself; ours only downloads (Settings shows "Restart").
+    systemctl mask bootc-fetch-apply-updates.timer; \
+    rm -rf /var/cache/* /var/log/* /tmp/*; \
+    bootc container lint
+
+LABEL org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.title="PS5 Launcher OS (minimal)" \
+      org.opencontainers.image.description="A PC that boots straight into PS5 Launcher: Fedora bootc, Gamescope, no desktop" \
+      org.opencontainers.image.source="https://github.com/MohamedAliRashad/ps5-launcher" \
+      org.opencontainers.image.licenses="Apache-2.0"

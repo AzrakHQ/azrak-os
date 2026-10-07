@@ -1,0 +1,9 @@
+[Unit]
+Description=Download the next PS5 Launcher OS version (it starts at the next restart)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+# Stage only: Fedora's own bootc update timer restarts the PC by itself, mid-game.
+ExecStart=/usr/bin/bootc upgrade --quiet
