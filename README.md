@@ -16,6 +16,28 @@ console" section; this is how it's built.
 | [build-iso.sh](build-iso.sh) | Fedora 44's netinstall ISO + the kickstart, with the boot menu renamed: about 1.2 GB, so it fits a GitHub release (2 GB per file). Bazzite's own ISO embeds the whole OS (~8 GB). |
 | [../.github/workflows/os.yml](../.github/workflows/os.yml) | Builds, checks and pushes both images (daily, so installed machines get Bazzite's updates, and after each launcher release), then builds the ISO and attaches it to the latest release. |
 
+## Minimal edition (os/minimal)
+
+The same idea without Bazzite: Fedora's bootc base, Gamescope and the launcher, 2.9 GB instead of
+~15, published as `:minimal`. No desktop; the launcher's **Settings → System** connects to Wi-Fi,
+pairs controllers, picks the sound output, restarts, shuts down and offers system updates (it
+knows it's on the OS from `/usr/lib/ps5-launcher-os/release`).
+
+| File | What it does |
+|---|---|
+| [minimal/Containerfile](minimal/Containerfile) | The image: drivers and firmware, Gamescope, cage, greetd, NetworkManager, BlueZ, PipeWire, the launcher's and emulators' libraries. |
+| `minimal/files/etc/greetd/config.toml`, `…/libexec/ps5-launcher-os/session` | Log `player` in at boot and run the launcher in Gamescope's Steam mode (switching between launcher and game uses its focus atoms). If Gamescope can't drive the graphics card, the launcher runs in cage so Settings → This PC can explain. The launcher is restarted if it ends. |
+| `minimal/files/usr/lib/sysusers.d/…` | The `player` user (uid 1000, no password). |
+| `minimal/files/usr/lib/systemd/system/ps5-launcher-os-update.*` | Daily `bootc upgrade`: downloads only. Fedora's own update timer restarts the PC and is masked. |
+| `minimal/files/usr/lib/bootc/{install,kargs.d}/…` | XFS root, quiet boot, and `systemd.gpt_auto=0` (otherwise the EFI partition is mounted over `/boot` and updates fail to finish). |
+
+Not yet: a live USB and an installer for it, and the proprietary NVIDIA driver (NVIDIA cards use
+Mesa's NVK, which needs a GTX 16xx/RTX 20xx or newer).
+
+Test it in a VM: `bootc install to-disk --via-loopback --generic-image` from the image (in a
+privileged container), then boot the disk with UEFI. A VM has no GPU Vulkan, so the launcher
+shows in cage there.
+
 ## Updates
 
 - **OS:** installed machines update from `ghcr.io/mohamedalirashad/ps5-launcher-os:<stable|nvidia>`
