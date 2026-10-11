@@ -26,12 +26,22 @@ export SDL_VIDEO_DRIVER=x11 SDL_VIDEODRIVER=x11 QT_QPA_PLATFORM=xcb GDK_BACKEND=
 failures=0
 while true; do
     started=$(date +%s)
-    if [ "$failures" -lt 2 ]; then
+    # Gamescope needs a launcher that tags its window (older releases don't, and Gamescope would
+    # show nothing) and a graphics card it can drive (two quick exits in a row: it can't). Checked
+    # every time, so a launcher that updated itself moves to Gamescope.
+    if ! "$bin" --supports gamescope 2>/dev/null; then
+        why="this launcher version can't run in Gamescope yet"
+    elif [ "$failures" -ge 2 ]; then
+        why="Gamescope can't run on this graphics card"
+    else
+        why=
+    fi
+    if [ -z "$why" ]; then
         echo "$(date -Is) starting in Gamescope" >>"$log"
         gamescope -e --xwayland-count 1 -- "$bin" >>"$log" 2>&1
         if [ $(( $(date +%s) - started )) -lt 15 ]; then failures=$((failures + 1)); else failures=0; fi
     else
-        echo "$(date -Is) Gamescope can't run on this graphics card; starting in a basic display" >>"$log"
+        echo "$(date -Is) $why; starting in a basic display" >>"$log"
         cage -s -- "$bin" >>"$log" 2>&1 &
         kiosk=$!
         # cage doesn't always notice its app ending (it would sit on a black screen): end it once

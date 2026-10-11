@@ -31,6 +31,11 @@ knows it's on the OS from `/usr/lib/ps5-launcher-os/release`).
 | `minimal/files/usr/lib/systemd/system/ps5-launcher-os-update.*` | Daily `bootc upgrade`: downloads only. Fedora's own update timer restarts the PC and is masked. |
 | `minimal/files/usr/lib/bootc/{install,kargs.d}/…` | XFS root, quiet boot, and `systemd.gpt_auto=0` (otherwise the EFI partition is mounted over `/boot` and updates fail to finish). |
 
+The session only uses Gamescope with a launcher that supports it (`ps5-launcher --supports
+gamescope`; releases before that don't tag their window and would show nothing); an older one
+runs in cage until it updates itself. For the same reason the workflow publishes `:minimal` only
+once the latest release supports it.
+
 Not yet: a live USB and an installer for it, and the proprietary NVIDIA driver (NVIDIA cards use
 Mesa's NVK, which needs a GTX 16xx/RTX 20xx or newer).
 
