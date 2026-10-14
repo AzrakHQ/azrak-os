@@ -43,6 +43,9 @@ RUN set -eux; \
     /usr/share/ps5-launcher-os/release/ps5-launcher --version | tee /usr/lib/ps5-launcher-os/release; \
     systemctl enable greetd.service NetworkManager.service bluetooth.service ps5-launcher-os-update.timer; \
     systemctl set-default graphical.target; \
+    # Anaconda (and others) set text mode (multi-user.target) as the default: the console's
+    # session must start there too.
+    systemctl add-wants multi-user.target greetd.service; \
     # Fedora's update timer restarts the PC by itself; ours only downloads (Settings shows "Restart").
     systemctl mask bootc-fetch-apply-updates.timer; \
     rm -rf /var/cache/* /var/log/* /tmp/*; \

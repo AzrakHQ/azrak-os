@@ -23,6 +23,10 @@ export SDL_VIDEO_DRIVER=x11 SDL_VIDEODRIVER=x11 QT_QPA_PLATFORM=xcb GDK_BACKEND=
 # itself can't start (a graphics card it can't drive, no Vulkan driver), show the launcher in a
 # plain kiosk display instead, where Settings → This PC says what's missing; games won't start
 # there, but the screen isn't black.
+# The session starts with the PC, usually before the network: give it a moment (at most 30 s,
+# so a PC without network still starts), so the first downloads don't fail. The launcher also
+# retries them when the network comes up later.
+nm-online -q -t 30 || echo "$(date -Is) no network yet; starting anyway" >>"$log"
 failures=0
 while true; do
     started=$(date +%s)
