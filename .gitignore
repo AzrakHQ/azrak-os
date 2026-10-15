@@ -1,0 +1,4 @@
+# The launcher release the workflow unpacks into the image.
+launcher/
+*.iso
+*.iso.sha256

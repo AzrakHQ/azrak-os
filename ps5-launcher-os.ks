@@ -1,4 +1,4 @@
-# PS5 Launcher OS installer (Fedora's network installer + this file; see os/build-iso.sh).
+# PS5 Launcher OS installer (Fedora's network installer + this file; see build-iso.sh).
 # The installer asks for the disk and creates your user; everything else is set here. The OS
 # itself is downloaded from GitHub's container registry, so an internet connection is needed.
 
@@ -24,7 +24,7 @@ rootpw --lock
 
 # The image for this PC: the NVIDIA build when an NVIDIA graphics card is present.
 %pre --log=/tmp/ps5-launcher-os-pre.log
-image=ghcr.io/mohamedalirashad/ps5-launcher-os
+image=ghcr.io/sakanhq/sakan-os
 tag=stable
 for dev in /sys/bus/pci/devices/*; do
     if [ "$(cat "$dev/vendor")" = 0x10de ] && grep -q '^0x03' "$dev/class"; then

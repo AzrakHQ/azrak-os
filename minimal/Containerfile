@@ -2,7 +2,7 @@
 # needs (drivers and firmware, Gamescope, networking, Bluetooth, sound) and PS5 Launcher as the
 # whole screen. No desktop: the launcher's Settings → System does Wi-Fi, pairing, sound output,
 # updates and power. Updates replace the whole system atomically (bootc), with the previous one
-# kept in the boot menu. Build from os/:  podman build -f minimal/Containerfile os
+# kept in the boot menu. Build from this repo:  podman build -f minimal/Containerfile .
 ARG BASE_IMAGE=quay.io/fedora/fedora-bootc:44
 FROM ${BASE_IMAGE}
 
@@ -30,7 +30,7 @@ RUN set -eux; \
 # a new version doesn't download them all again.
 ARG VERSION=dev
 
-# The latest launcher release (unpacked by the workflow into os/launcher). It only seeds the
+# The latest launcher release (unpacked by the workflow into launcher/). It only seeds the
 # player's own copy in ~/.local/bin, which then updates itself.
 COPY launcher/ /usr/share/ps5-launcher-os/release/
 COPY minimal/files/ /
@@ -54,5 +54,5 @@ RUN set -eux; \
 LABEL org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.title="PS5 Launcher OS (minimal)" \
       org.opencontainers.image.description="A PC that boots straight into PS5 Launcher: Fedora bootc, Gamescope, no desktop" \
-      org.opencontainers.image.source="https://github.com/MohamedAliRashad/ps5-launcher" \
+      org.opencontainers.image.source="https://github.com/sakanhq/sakan-os" \
       org.opencontainers.image.licenses="Apache-2.0"

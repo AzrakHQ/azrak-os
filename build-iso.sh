@@ -1,7 +1,7 @@
 #!/usr/bin/bash
-# Build the PS5 Launcher OS installer ISO: Fedora's network installer with os/ps5-launcher-os.ks.
+# Build the PS5 Launcher OS installer ISO: Fedora's network installer with ps5-launcher-os.ks.
 # Runs in a Fedora container (needs lorax's mkksiso):
-#   docker run --rm --privileged -v "$PWD:/src" -w /src fedora:44 os/build-iso.sh OUT.iso [EXTRA.ks]
+#   docker run --rm --privileged -v "$PWD:/src" -w /src fedora:44 ./build-iso.sh OUT.iso [EXTRA.ks]
 # EXTRA.ks is appended to the kickstart (the automated VM test uses it; releases don't).
 set -euo pipefail
 out=${1:?output ISO}
@@ -27,7 +27,7 @@ curl -fsSL --retry 3 -o "$files/ps5-launcher-os-secureboot.der" "$key_url"
 echo "$key_sha256  $files/ps5-launcher-os-secureboot.der" | sha256sum -c -
 
 ks=$(mktemp -d)/ps5-launcher-os.ks
-cat os/ps5-launcher-os.ks > "$ks"
+cat ps5-launcher-os.ks > "$ks"
 [ -n "$extra" ] && cat "$extra" >> "$ks"
 rm -f "$out"
 # The boot menu names our OS (the installer program is Fedora's; what it installs is

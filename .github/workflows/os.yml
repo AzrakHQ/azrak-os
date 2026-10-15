@@ -1,0 +1,163 @@
+name: PS5 Launcher OS
+
+# The OS images and the installer ISO.
+# - Images: ghcr.io/<owner>/sakan-os:stable (AMD/Intel) and :nvidia (Bazzite + the launcher), and
+#   :minimal (Fedora bootc + Gamescope + the launcher, minimal/). Rebuilt daily so installed
+#   machines get their base's updates and the newest launcher release; they update themselves
+#   from these tags.
+# - ISO: Fedora's network installer with ps5-launcher-os.ks. It installs the current image, so
+#   it's only rebuilt (into a new release here) when the installer changes, or when asked.
+
+on:
+  workflow_dispatch:
+    inputs:
+      iso:
+        description: Build the installer ISO and attach it to the latest release
+        type: boolean
+        default: true
+  # The installer changed: a new ISO.
+  push:
+    branches: [main]
+    paths: [ps5-launcher-os.ks, build-iso.sh]
+  schedule:
+    - cron: "30 5 * * *"
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: ps5-launcher-os
+  cancel-in-progress: false
+
+jobs:
+  image:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - tag: stable
+            base: ghcr.io/ublue-os/bazzite-deck:stable
+            file: Containerfile
+          - tag: nvidia
+            base: ghcr.io/ublue-os/bazzite-deck-nvidia:stable
+            file: Containerfile
+          - tag: minimal
+            base: quay.io/fedora/fedora-bootc:44
+            file: minimal/Containerfile
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space (the base image is large)
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache /usr/local/share/boost \
+            /usr/local/lib/node_modules /usr/share/swift /usr/local/.ghcup /opt/microsoft || true
+          docker system prune -af >/dev/null 2>&1 || true
+          df -h /
+
+      - name: Unpack the latest launcher release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download --repo sakanhq/sakan --pattern 'ps5-launcher-linux-x86_64.tar.gz*' --dir /tmp/release
+          (cd /tmp/release && sha256sum -c ps5-launcher-linux-x86_64.tar.gz.sha256)
+          tar -C /tmp/release -xzf /tmp/release/ps5-launcher-linux-x86_64.tar.gz
+          mv /tmp/release/ps5-launcher-linux-x86_64 launcher
+          launcher/ps5-launcher --version
+
+      # The minimal edition runs the launcher in Gamescope, where a launcher that doesn't tag its
+      # window shows nothing: publish it only with a release that does.
+      - name: Does the released launcher run in Gamescope?
+        if: matrix.tag == 'minimal'
+        run: |
+          if ! launcher/ps5-launcher --supports gamescope; then
+            echo "::notice:::minimal not published: the latest launcher release predates Gamescope support"
+            echo "SKIP=1" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build
+        if: env.SKIP != '1'
+        run: |
+          owner=$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')
+          echo "IMAGE=ghcr.io/$owner/sakan-os" >> "$GITHUB_ENV"
+          sudo podman build --pull=always --build-arg BASE_IMAGE=${{ matrix.base }} \
+            --build-arg VERSION="$(date -u +%Y.%m.%d)" -f ${{ matrix.file }} \
+            -t "ghcr.io/$owner/sakan-os:${{ matrix.tag }}" .
+
+      - name: Check the image
+        if: matrix.tag != 'minimal'
+        run: |
+          img="$IMAGE:${{ matrix.tag }}"
+          sudo podman run --rm --entrypoint /usr/bin/bash "$img" -c '
+            set -e
+            test -x /usr/libexec/ps5-launcher-os/start
+            test -x /usr/libexec/ps5-launcher-os/ensure-user
+            systemctl is-enabled ps5-launcher-os-ensure-user.service bazzite-autologin.service
+            test -f /etc/xdg/autostart/ps5-launcher-os.desktop
+            test -f /etc/bazzite/desktop_autologin
+            /usr/share/ps5-launcher-os/release/ps5-launcher --version
+            for tool in xdotool mpv yt-dlp; do command -v "$tool" || { echo "missing $tool"; exit 1; }; done
+            # Loaded at run time by name (trailers, archive installs).
+            for lib in libmpv.so.2 libarchive.so.13; do ldconfig -p | grep -q "$lib " || { echo "missing $lib"; exit 1; }; done
+            for f in /etc/xdg/autostart/org.kde.plasma-welcome.desktop /etc/xdg/autostart/steam.desktop \
+                     /etc/xdg/autostart/bazzite-announcement.desktop /etc/skel/Desktop/Return.desktop; do
+              test ! -e "$f" || { echo "should be gone: $f"; exit 1; }
+            done
+            grep -q kinoite /usr/share/ublue-os/image-info.json
+            test -x /usr/libexec/bazzite-autologin'
+
+      - name: Check the minimal image
+        if: matrix.tag == 'minimal' && env.SKIP != '1'
+        run: |
+          sudo podman run --rm --entrypoint /usr/bin/bash "$IMAGE:minimal" -c '
+            set -e
+            test -x /usr/libexec/ps5-launcher-os/session
+            test -s /usr/lib/ps5-launcher-os/release
+            systemctl is-enabled greetd.service NetworkManager.service bluetooth.service ps5-launcher-os-update.timer
+            test "$(systemctl is-enabled bootc-fetch-apply-updates.timer)" = masked
+            grep -q systemd.gpt_auto=0 /usr/lib/bootc/install/50-ps5-launcher-os.toml
+            for tool in gamescope cage xprop xdotool nmcli bluetoothctl pactl rpm-ostree bootc; do
+              command -v "$tool" >/dev/null || { echo "missing $tool"; exit 1; }
+            done
+            for lib in libmpv.so.2 libarchive.so.13 libxkbcommon-x11.so.0 libvulkan.so.1 libpulse.so.0 libXss.so.1; do
+              ldconfig -p | grep -q "$lib " || { echo "missing $lib"; exit 1; }
+            done
+            /usr/share/ps5-launcher-os/release/ps5-launcher --version
+            /usr/share/ps5-launcher-os/release/ps5-launcher --supports gamescope'
+
+      - name: Push
+        if: env.SKIP != '1'
+        run: |
+          echo "${{ github.token }}" | sudo podman login ghcr.io -u "${{ github.actor }}" --password-stdin
+          img="$IMAGE:${{ matrix.tag }}"
+          sudo podman tag "$img" "$img-$(date -u +%Y%m%d)"
+          for ref in "$img" "$img-$(date -u +%Y%m%d)"; do
+            for try in 1 2 3; do sudo podman push "$ref" && break; [ "$try" = 3 ] && exit 1; sleep 30; done
+          done
+
+  iso:
+    needs: image
+    # Only when the installer changed or when asked: the ISO installs the current image, so it
+    # doesn't need rebuilding with every image update.
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.iso)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the ISO
+        run: |
+          docker run --rm --privileged -v "$PWD:/src" -w /src -e ISO_CACHE=/src fedora:44 \
+            ./build-iso.sh ps5-launcher-os-x86_64.iso
+          sha256sum ps5-launcher-os-x86_64.iso > ps5-launcher-os-x86_64.iso.sha256
+          size=$(stat -c %s ps5-launcher-os-x86_64.iso)
+          echo "ISO: $size bytes"
+          test "$size" -lt 2000000000
+      - name: Publish as a new release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="installer-$(date -u +%Y.%m.%d-%H%M)"
+          gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --latest \
+            --title "PS5 Launcher OS installer $(date -u +%Y-%m-%d)" \
+            --notes "Download ps5-launcher-os-x86_64.iso and write it to a USB stick (see the README). It installs the newest OS image, which then keeps itself and the launcher up to date." \
+            ps5-launcher-os-x86_64.iso ps5-launcher-os-x86_64.iso.sha256

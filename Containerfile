@@ -1,6 +1,6 @@
 # PS5 Launcher OS: Bazzite's living-room edition (bazzite-deck) that logs straight into a
 # Plasma session and opens PS5 Launcher full screen. Built by .github/workflows/os.yml; see
-# os/README.md.
+# README.md.
 ARG BASE_IMAGE=ghcr.io/ublue-os/bazzite-deck:stable
 FROM ${BASE_IMAGE}
 
@@ -29,5 +29,5 @@ RUN set -eux; \
 
 LABEL org.opencontainers.image.title="PS5 Launcher OS" \
       org.opencontainers.image.description="Bazzite that boots straight into PS5 Launcher" \
-      org.opencontainers.image.source="https://github.com/MohamedAliRashad/ps5-launcher" \
+      org.opencontainers.image.source="https://github.com/sakanhq/sakan-os" \
       org.opencontainers.image.licenses="Apache-2.0"
