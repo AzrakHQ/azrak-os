@@ -60,7 +60,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release download --repo AzrakHQ/azrak --pattern 'azrak-linux-x86_64.tar.gz*' --dir /tmp/release
+          gh release download --repo AzrakHQ/azrak-launcher --pattern 'azrak-linux-x86_64.tar.gz*' --dir /tmp/release
           (cd /tmp/release && sha256sum -c azrak-linux-x86_64.tar.gz.sha256)
           tar -C /tmp/release -xzf /tmp/release/azrak-linux-x86_64.tar.gz
           mv /tmp/release/azrak-linux-x86_64 launcher

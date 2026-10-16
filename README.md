@@ -1,6 +1,6 @@
 # AzrakOS
 
-A PC that starts straight into [Azrak Launcher](https://github.com/AzrakHQ/azrak):
+A PC that starts straight into [Azrak Launcher](https://github.com/AzrakHQ/azrak-launcher):
 [Bazzite](https://bazzite.gg)'s living-room edition (`bazzite-deck`) with the launcher added, or
 the minimal edition below. Players see the launcher's README ("Turn a spare PC into a console");
 this repo is how the OS is built.
