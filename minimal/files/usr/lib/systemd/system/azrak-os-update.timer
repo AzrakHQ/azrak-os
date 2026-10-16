@@ -1,5 +1,5 @@
 [Unit]
-Description=Check for a new PS5 Launcher OS version every day
+Description=Check for a new AzrakOS version every day
 
 [Timer]
 OnBootSec=15min

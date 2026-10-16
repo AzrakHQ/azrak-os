@@ -1,5 +1,5 @@
 [Unit]
-Description=Download the next PS5 Launcher OS version (it starts at the next restart)
+Description=Download the next AzrakOS version (it starts at the next restart)
 Wants=network-online.target
 After=network-online.target
 

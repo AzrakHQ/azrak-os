@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Azrak Launcher
+Comment=Opens Azrak Launcher when the console starts
+Exec=/usr/libexec/azrak-os/start
+Icon=azrak
+X-KDE-autostart-phase=2
+NoDisplay=true

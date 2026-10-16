@@ -1,23 +1,34 @@
 #!/usr/bin/bash
-# Opens PS5 Launcher when the console's session starts (/etc/xdg/autostart/ps5-launcher-os.desktop).
-# The launcher lives in the user's home folder so it can update itself; the copy in the OS image
-# only installs it the first time (or if it was removed).
+# Opens Azrak Launcher when the console's session starts (/etc/xdg/autostart/azrak-os.desktop).
 set -u
-bin="$HOME/.local/bin/ps5-launcher"
-seed=/usr/share/ps5-launcher-os/release
-log="$HOME/.cache/ps5-launcher-os.log"
+# The launcher lives in the user's home folder so it can update itself; the copy in the OS image
+# only installs it the first time (or if it was removed). One from before Azrak (Azrak Launcher)
+# still has its old name until its first start as Azrak moves it over, so this is checked before
+# every start.
+seed=/usr/share/azrak-os/release
+log="$HOME/.cache/azrak-os.log"
 mkdir -p "$HOME/.cache"
-if [ ! -x "$bin" ]; then
-    echo "$(date -Is) installing PS5 Launcher from the OS image" >>"$log"
-    "$seed/install.sh" >>"$log" 2>&1 || cp "$seed/ps5-launcher" "$bin" 2>>"$log"
-fi
-[ -x "$bin" ] || bin="$seed/ps5-launcher"
+rm -f "$HOME/.cache/ps5-launcher-os.log"  # from before Azrak
+pick() {
+    bin="$HOME/.local/bin/azrak"
+    [ -x "$bin" ] || [ ! -x "$HOME/.local/bin/ps5-launcher" ] || bin="$HOME/.local/bin/ps5-launcher"
+    if [ ! -x "$bin" ]; then
+        echo "$(date -Is) installing Azrak Launcher from the OS image" >>"$log"
+        "$seed/install.sh" >>"$log" 2>&1 || { mkdir -p "${bin%/*}" && cp "$seed/azrak" "$bin"; } 2>>"$log"
+    fi
+    [ -x "$bin" ] || bin="$seed/azrak"
+}
+pick
 
 # Console power settings, once per user. At first login Plasma migrates Bazzite's power profile
 # into the user's own powerdevilrc (screen dims and turns off when idle), which overrides
 # /etc/xdg. Controllers don't count as activity, so the screen would go dark while someone
 # browses with one. Applied after that migration has run; later changes by the user are kept.
-power_done="$HOME/.config/ps5-launcher-os/power-settings-applied"
+power_done="$HOME/.config/azrak-os/power-settings-applied"
+if [ -e "$HOME/.config/ps5-launcher-os/power-settings-applied" ]; then  # from before Azrak
+    mkdir -p "${power_done%/*}" && touch "$power_done"
+fi
+rm -rf "$HOME/.config/ps5-launcher-os"
 if [ ! -e "$power_done" ]; then
     (
         sleep 20

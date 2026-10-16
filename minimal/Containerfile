@@ -1,5 +1,5 @@
-# PS5 Launcher OS, minimal edition: Fedora's bootable container base with only what a console
-# needs (drivers and firmware, Gamescope, networking, Bluetooth, sound) and PS5 Launcher as the
+# AzrakOS, minimal edition: Fedora's bootable container base with only what a console
+# needs (drivers and firmware, Gamescope, networking, Bluetooth, sound) and Azrak Launcher as the
 # whole screen. No desktop: the launcher's Settings → System does Wi-Fi, pairing, sound output,
 # updates and power. Updates replace the whole system atomically (bootc), with the previous one
 # kept in the boot menu. Build from this repo:  podman build -f minimal/Containerfile .
@@ -32,16 +32,16 @@ ARG VERSION=dev
 
 # The latest launcher release (unpacked by the workflow into launcher/). It only seeds the
 # player's own copy in ~/.local/bin, which then updates itself.
-COPY launcher/ /usr/share/ps5-launcher-os/release/
+COPY launcher/ /usr/share/azrak-os/release/
 COPY minimal/files/ /
 
 RUN set -eux; \
-    chmod 0755 /usr/libexec/ps5-launcher-os/session /usr/share/ps5-launcher-os/release/ps5-launcher \
-        /usr/share/ps5-launcher-os/release/install.sh; \
+    chmod 0755 /usr/libexec/azrak-os/session /usr/share/azrak-os/release/azrak \
+        /usr/share/azrak-os/release/install.sh; \
     # Tells the launcher it's the whole system (Settings → System).
-    mkdir -p /usr/lib/ps5-launcher-os; \
-    /usr/share/ps5-launcher-os/release/ps5-launcher --version | tee /usr/lib/ps5-launcher-os/release; \
-    systemctl enable greetd.service NetworkManager.service bluetooth.service ps5-launcher-os-update.timer; \
+    mkdir -p /usr/lib/azrak-os; \
+    /usr/share/azrak-os/release/azrak --version | tee /usr/lib/azrak-os/release; \
+    systemctl enable greetd.service NetworkManager.service bluetooth.service azrak-os-update.timer; \
     systemctl set-default graphical.target; \
     # Anaconda (and others) set text mode (multi-user.target) as the default: the console's
     # session must start there too.
@@ -52,7 +52,7 @@ RUN set -eux; \
     bootc container lint
 
 LABEL org.opencontainers.image.version="${VERSION}" \
-      org.opencontainers.image.title="PS5 Launcher OS (minimal)" \
-      org.opencontainers.image.description="A PC that boots straight into PS5 Launcher: Fedora bootc, Gamescope, no desktop" \
+      org.opencontainers.image.title="AzrakOS (minimal)" \
+      org.opencontainers.image.description="A PC that boots straight into Azrak Launcher: Fedora bootc, Gamescope, no desktop" \
       org.opencontainers.image.source="https://github.com/AzrakHQ/azrak-os" \
       org.opencontainers.image.licenses="Apache-2.0"

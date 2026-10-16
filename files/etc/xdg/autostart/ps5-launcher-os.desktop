@@ -1,8 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=PS5 Launcher
-Comment=Opens PS5 Launcher when the console starts
-Exec=/usr/libexec/ps5-launcher-os/start
-Icon=ps5-launcher
-X-KDE-autostart-phase=2
-NoDisplay=true

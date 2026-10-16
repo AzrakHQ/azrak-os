@@ -1,4 +1,4 @@
-# PS5 Launcher OS installer (Fedora's network installer + this file; see build-iso.sh).
+# AzrakOS installer (Fedora's network installer + this file; see build-iso.sh).
 # The installer asks for the disk and creates your user; everything else is set here. The OS
 # itself is downloaded from GitHub's container registry, so an internet connection is needed.
 
@@ -6,9 +6,9 @@
 # ps5los.enroll): for when the blue MOK screen was missed after installing (it waits about 5
 # minutes) and the PC no longer starts. Queues the key again and restarts into that screen;
 # nothing is installed.
-%pre --log=/tmp/ps5-launcher-os-enroll.log
+%pre --log=/tmp/azrak-os-enroll.log
 if grep -qw ps5los.enroll /proc/cmdline; then
-    key=$(find /run/install -name ps5-launcher-os-secureboot.der 2>/dev/null | head -1)
+    key=$(find /run/install -name azrak-os-secureboot.der 2>/dev/null | head -1)
     mokutil --timeout -1 || :
     printf 'universalblue\nuniversalblue\n' | mokutil --import "$key" || :
     mokutil --list-new
@@ -23,7 +23,7 @@ keyboard --vckeymap=us --xlayouts=us
 rootpw --lock
 
 # The image for this PC: the NVIDIA build when an NVIDIA graphics card is present.
-%pre --log=/tmp/ps5-launcher-os-pre.log
+%pre --log=/tmp/azrak-os-pre.log
 image=ghcr.io/azrakhq/azrak-os
 tag=stable
 for dev in /sys/bus/pci/devices/*; do
@@ -32,15 +32,15 @@ for dev in /sys/bus/pci/devices/*; do
     fi
 done
 echo "Installing $image:$tag"
-echo "ostreecontainer --url=$image:$tag --transport=registry --no-signature-verification" > /tmp/ps5-launcher-os-source.ks
+echo "ostreecontainer --url=$image:$tag --transport=registry --no-signature-verification" > /tmp/azrak-os-source.ks
 %end
-%include /tmp/ps5-launcher-os-source.ks
+%include /tmp/azrak-os-source.ks
 
 # Bazzite's kernel is signed with Universal Blue's key (on the ISO, checked when it was built).
 # With Secure Boot on, queue it for enrollment: after the restart a blue "MOK management" screen
 # asks to enroll it (password universalblue; it waits about 5 minutes). With Secure Boot off,
 # nothing is shown.
-%post --nochroot --log=/tmp/ps5-launcher-os-secureboot.log
+%post --nochroot --log=/tmp/azrak-os-secureboot.log
 set -u
 if [ ! -d /sys/firmware/efi ] || ! command -v mokutil >/dev/null; then
     echo "No UEFI or mokutil: skipping"; exit 0
@@ -48,7 +48,7 @@ fi
 if ! mokutil --sb-state 2>/dev/null | grep -qi "SecureBoot enabled"; then
     echo "Secure Boot is off: nothing to enroll"; exit 0
 fi
-key=$(find /run/install -name ps5-launcher-os-secureboot.der 2>/dev/null | head -1)
+key=$(find /run/install -name azrak-os-secureboot.der 2>/dev/null | head -1)
 if [ -z "$key" ]; then
     key=/tmp/ublue-secure-boot.der
     curl -fsSL --retry 3 -o "$key" https://github.com/ublue-os/akmods/raw/main/certs/public_key.der || exit 0
