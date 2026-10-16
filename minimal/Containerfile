@@ -54,5 +54,5 @@ RUN set -eux; \
 LABEL org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.title="PS5 Launcher OS (minimal)" \
       org.opencontainers.image.description="A PC that boots straight into PS5 Launcher: Fedora bootc, Gamescope, no desktop" \
-      org.opencontainers.image.source="https://github.com/sakanhq/sakan-os" \
+      org.opencontainers.image.source="https://github.com/AzrakHQ/azrak-os" \
       org.opencontainers.image.licenses="Apache-2.0"

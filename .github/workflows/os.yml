@@ -1,7 +1,7 @@
 name: PS5 Launcher OS
 
 # The OS images and the installer ISO.
-# - Images: ghcr.io/<owner>/sakan-os:stable (AMD/Intel) and :nvidia (Bazzite + the launcher), and
+# - Images: ghcr.io/<owner>/azrak-os:stable (AMD/Intel) and :nvidia (Bazzite + the launcher), and
 #   :minimal (Fedora bootc + Gamescope + the launcher, minimal/). Rebuilt daily so installed
 #   machines get their base's updates and the newest launcher release; they update themselves
 #   from these tags.
@@ -60,7 +60,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release download --repo sakanhq/sakan --pattern 'ps5-launcher-linux-x86_64.tar.gz*' --dir /tmp/release
+          gh release download --repo AzrakHQ/azrak --pattern 'ps5-launcher-linux-x86_64.tar.gz*' --dir /tmp/release
           (cd /tmp/release && sha256sum -c ps5-launcher-linux-x86_64.tar.gz.sha256)
           tar -C /tmp/release -xzf /tmp/release/ps5-launcher-linux-x86_64.tar.gz
           mv /tmp/release/ps5-launcher-linux-x86_64 launcher
@@ -80,10 +80,10 @@ jobs:
         if: env.SKIP != '1'
         run: |
           owner=$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')
-          echo "IMAGE=ghcr.io/$owner/sakan-os" >> "$GITHUB_ENV"
+          echo "IMAGE=ghcr.io/$owner/azrak-os" >> "$GITHUB_ENV"
           sudo podman build --pull=always --build-arg BASE_IMAGE=${{ matrix.base }} \
             --build-arg VERSION="$(date -u +%Y.%m.%d)" -f ${{ matrix.file }} \
-            -t "ghcr.io/$owner/sakan-os:${{ matrix.tag }}" .
+            -t "ghcr.io/$owner/azrak-os:${{ matrix.tag }}" .
 
       - name: Check the image
         if: matrix.tag != 'minimal'

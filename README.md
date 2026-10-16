@@ -1,12 +1,12 @@
 # PS5 Launcher OS
 
-A PC that starts straight into [PS5 Launcher](https://github.com/sakanhq/sakan):
+A PC that starts straight into [PS5 Launcher](https://github.com/AzrakHQ/azrak):
 [Bazzite](https://bazzite.gg)'s living-room edition (`bazzite-deck`) with the launcher added, or
 the minimal edition below. Players see the launcher's README ("Turn a spare PC into a console");
 this repo is how the OS is built.
 
-**Install:** download [ps5-launcher-os-x86_64.iso](https://github.com/sakanhq/sakan-os/releases/latest/download/ps5-launcher-os-x86_64.iso)
-from the [latest release](https://github.com/sakanhq/sakan-os/releases/latest).
+**Install:** download [ps5-launcher-os-x86_64.iso](https://github.com/AzrakHQ/azrak-os/releases/latest/download/ps5-launcher-os-x86_64.iso)
+from the [latest release](https://github.com/AzrakHQ/azrak-os/releases/latest).
 
 ## Pieces
 
@@ -16,7 +16,7 @@ from the [latest release](https://github.com/sakanhq/sakan-os/releases/latest).
 | [files/etc/bazzite/desktop_autologin](files/etc/bazzite/desktop_autologin) | Bazzite's own marker: its `bazzite-autologin` service logs user 1000 into Plasma instead of Steam Gaming Mode. |
 | [files/etc/xdg/autostart/ps5-launcher-os.desktop](files/etc/xdg/autostart/ps5-launcher-os.desktop), [files/usr/libexec/ps5-launcher-os/start](files/usr/libexec/ps5-launcher-os/start) | Opens the launcher full screen when the session starts. On first login it installs the launcher into `~/.local/bin` (from the copy in the image) so it can update itself there. It runs on XWayland, because switching between the launcher and a game uses xdotool. |
 | `files/etc/xdg/{kscreenlockerrc,powerdevilrc,kwalletrc}` | No lock screen, no KDE Wallet prompts (nothing to type them with on a controller), no automatic suspend (downloads keep going). |
-| [ps5-launcher-os.ks](ps5-launcher-os.ks) | Kickstart for Fedora's network installer: installs `ghcr.io/sakanhq/sakan-os:stable`, or `:nvidia` when an NVIDIA graphics card is present, and queues Bazzite's Secure Boot key (password `universalblue`) when Secure Boot is on. The installer still asks for the disk and creates the user. |
+| [ps5-launcher-os.ks](ps5-launcher-os.ks) | Kickstart for Fedora's network installer: installs `ghcr.io/azrakhq/azrak-os:stable`, or `:nvidia` when an NVIDIA graphics card is present, and queues Bazzite's Secure Boot key (password `universalblue`) when Secure Boot is on. The installer still asks for the disk and creates the user. |
 | [build-iso.sh](build-iso.sh) | Fedora 44's netinstall ISO + the kickstart, with the boot menu renamed: about 1.2 GB, so it fits a GitHub release (2 GB per file). Bazzite's own ISO embeds the whole OS (~8 GB). |
 | [.github/workflows/os.yml](.github/workflows/os.yml) | Builds, checks and pushes the images daily (so installed machines get their base's updates and the newest launcher), and builds the ISO into a new release when the installer changes (or when asked). |
 
@@ -49,7 +49,7 @@ shows in cage there.
 
 ## Updates
 
-- **OS:** installed machines update from `ghcr.io/sakanhq/sakan-os:<stable|nvidia|minimal>`
+- **OS:** installed machines update from `ghcr.io/azrakhq/azrak-os:<stable|nvidia|minimal>`
   in the background, like Bazzite. A bad update can be undone from the boot menu.
 - **Launcher, KytyPS5, shadPS4:** in the user's home folder; the launcher updates them itself.
   The copy in the image only seeds a new user.

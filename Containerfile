@@ -29,5 +29,5 @@ RUN set -eux; \
 
 LABEL org.opencontainers.image.title="PS5 Launcher OS" \
       org.opencontainers.image.description="Bazzite that boots straight into PS5 Launcher" \
-      org.opencontainers.image.source="https://github.com/sakanhq/sakan-os" \
+      org.opencontainers.image.source="https://github.com/AzrakHQ/azrak-os" \
       org.opencontainers.image.licenses="Apache-2.0"

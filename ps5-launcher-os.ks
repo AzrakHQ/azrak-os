@@ -24,7 +24,7 @@ rootpw --lock
 
 # The image for this PC: the NVIDIA build when an NVIDIA graphics card is present.
 %pre --log=/tmp/ps5-launcher-os-pre.log
-image=ghcr.io/sakanhq/sakan-os
+image=ghcr.io/azrakhq/azrak-os
 tag=stable
 for dev in /sys/bus/pci/devices/*; do
     if [ "$(cat "$dev/vendor")" = 0x10de ] && grep -q '^0x03' "$dev/class"; then
