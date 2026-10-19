@@ -1,0 +1,9 @@
+// The console's user, sitting at the PC, manages its network: joining a new Wi-Fi network saves
+// it for the whole system, which polkit otherwise reserves for an administrator's password, and
+// there's nothing to type one into (the launcher's Settings → Internet).
+polkit.addRule(function (action, subject) {
+    if (action.id.indexOf("org.freedesktop.NetworkManager.") === 0 &&
+        subject.user === "player" && subject.local && subject.active) {
+        return polkit.Result.YES;
+    }
+});
