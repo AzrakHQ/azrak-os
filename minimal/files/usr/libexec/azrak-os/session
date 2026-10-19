@@ -38,17 +38,50 @@ export SDL_VIDEO_DRIVER=x11 SDL_VIDEODRIVER=x11 QT_QPA_PLATFORM=xcb GDK_BACKEND=
 # itself can't start (a graphics card it can't drive, no Vulkan driver), show the launcher in a
 # plain kiosk display instead, where Settings → This PC says what's missing; games won't start
 # there, but the screen isn't black.
-# The session starts with the PC, usually before the network: give it a moment (at most 30 s,
-# so a PC without network still starts), so the first downloads don't fail. The launcher also
-# retries them when the network comes up later.
-nm-online -q -t 30 || echo "$(date -Is) no network yet; starting anyway" >>"$log"
+# The session starts with the PC, usually just before the network: give it a moment, so the first
+# downloads don't fail, but only a short one (the screen is black meanwhile, between the boot
+# screen and the launcher). The launcher retries anything that failed when the network comes up.
+nm-online -q -t 5 || echo "$(date -Is) no network yet; starting anyway" >>"$log"
+# The launcher logs "welcome screen ready" or "home screen shown" once it's on screen. If it hasn't
+# within 90 s of starting (seen once in a VM: it hung before its window, and the screen stayed black
+# for good), it's stopped and started again rather than leaving the TV black.
+shown_since() {
+    tail -c +"$(( $1 + 1 ))" "$log" 2>/dev/null | grep -qaE '\] (welcome screen ready|home screen shown)$'
+}
+# Wait for the display server PID (Gamescope or cage) to end; true when the watchdog ended it.
+watch() {
+    local pid=$1 mark=$2 kiosk=$3 t0 shown= running child
+    t0=$(date +%s)
+    while sleep 2 && kill -0 "$pid" 2>/dev/null; do
+        [ -n "$shown" ] || ! shown_since "$mark" || shown=1
+        if [ -z "$shown" ] && [ $(( $(date +%s) - t0 )) -ge 90 ]; then
+            echo "$(date -Is) nothing on screen after 90 s; starting again" >>"$log"
+            kill "$pid"
+            wait "$pid"
+            return 0
+        fi
+        # cage doesn't always notice its app ending (it would sit on a black screen): end it once
+        # the launcher is gone, so the loop starts both again.
+        if [ -n "$kiosk" ]; then
+            running=
+            for child in $(pgrep -P "$pid" -x 'azrak|ps5-launcher'); do
+                [ "$(cut -d' ' -f3 "/proc/$child/stat" 2>/dev/null)" != Z ] && running=1
+            done
+            [ -n "$running" ] || [ $(( $(date +%s) - t0 )) -lt 4 ] || { kill "$pid"; break; }
+        fi
+    done
+    wait "$pid"
+    return 1
+}
+
 failures=0
 while true; do
     pick
     started=$(date +%s)
+    mark=$(stat -c %s "$log" 2>/dev/null || echo 0)
     # Gamescope needs a launcher that tags its window (older releases don't, and Gamescope would
-    # show nothing) and a graphics card it can drive (two quick exits in a row: it can't). Checked
-    # every time, so a launcher that updated itself moves to Gamescope.
+    # show nothing) and a graphics card it can drive (two quick exits in a row, or twice nothing
+    # on screen: it can't). Checked every time, so a launcher that updated itself moves to Gamescope.
     if ! "$bin" --supports gamescope 2>/dev/null; then
         why="this launcher version can't run in Gamescope yet"
     elif [ "$failures" -ge 2 ]; then
@@ -58,22 +91,16 @@ while true; do
     fi
     if [ -z "$why" ]; then
         echo "$(date -Is) starting in Gamescope" >>"$log"
-        gamescope -e --xwayland-count 1 -- "$bin" >>"$log" 2>&1
-        if [ $(( $(date +%s) - started )) -lt 15 ]; then failures=$((failures + 1)); else failures=0; fi
+        gamescope -e --xwayland-count 1 -- "$bin" >>"$log" 2>&1 &
+        if watch $! "$mark" "" || [ $(( $(date +%s) - started )) -lt 15 ]; then
+            failures=$((failures + 1))
+        else
+            failures=0
+        fi
     else
         echo "$(date -Is) $why; starting in a basic display" >>"$log"
         cage -s -- "$bin" >>"$log" 2>&1 &
-        kiosk=$!
-        # cage doesn't always notice its app ending (it would sit on a black screen): end it once
-        # the launcher is gone, so the loop starts both again.
-        while sleep 2 && kill -0 "$kiosk" 2>/dev/null; do
-            running=
-            for pid in $(pgrep -P "$kiosk" -x 'azrak|ps5-launcher'); do
-                [ "$(cut -d' ' -f3 "/proc/$pid/stat" 2>/dev/null)" != Z ] && running=1
-            done
-            [ -n "$running" ] || { kill "$kiosk"; break; }
-        done
-        wait "$kiosk"
+        watch $! "$mark" kiosk
     fi
     sleep 2
 done

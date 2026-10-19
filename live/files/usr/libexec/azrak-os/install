@@ -78,6 +78,21 @@ if [ -n "$nvidia" ]; then
 fi
 
 progress 10 "Preparing the disk"
+# bootc says little while it copies the system, so the progress comes from what's been written to
+# the disk, against the system's size (plus about a fifth for the filesystem around it).
+dev=$(basename "$(readlink -f "$disk")")
+written() { awk '{print $7 * 512}' "/sys/block/$dev/stat"; }
+size=$(podman image inspect --format '{{.Size}}' "$repo:$tag" 2>/dev/null || echo 3000000000)
+expected=$((size * 6 / 5))
+start=$(written)
+(
+    while sleep 2; do
+        pct=$(( 15 + 75 * ($(written) - start) / expected ))
+        [ "$pct" -gt 90 ] && pct=90
+        [ "$pct" -gt 15 ] && progress "$pct" "Copying AzrakOS"
+    done
+) &
+meter=$!
 # bootc installs the system from the image it runs in: the one stored on the stick (or the NVIDIA
 # one just downloaded), and the installed PC then updates from $repo:$tag.
 podman run --rm --privileged --pid=host --security-opt label=type:unconfined_t \
@@ -87,14 +102,34 @@ podman run --rm --privileged --pid=host --security-opt label=type:unconfined_t \
 while IFS= read -r line; do
     echo "$line" >&2
     case "$line" in
-        *"Initializing ostree layout"*) progress 20 "Preparing the disk" ;;
-        *"Deploying container image"* | *"Importing"* | *"Fetching"*) progress 35 "Copying AzrakOS" ;;
-        *"Staging"* | *"deployment"*) progress 70 "Copying AzrakOS" ;;
-        *"Installing bootloader"* | *"bootupd"*) progress 85 "Setting up the boot menu" ;;
-        *"Trimming"* | *"Finalizing"*) progress 95 "Finishing" ;;
+        *"Installing bootloader"* | *"bootupd"*) progress 92 "Setting up the boot menu" ;;
+        *"Trimming"* | *"Finalizing"*) progress 96 "Finishing" ;;
     esac
 done
-[ "${PIPESTATUS[0]}" = 0 ] || fail "Installing on $disk failed."
+status=${PIPESTATUS[0]}
+kill "$meter" 2>/dev/null
+wait "$meter" 2>/dev/null
+[ "$status" = 0 ] || fail "Installing on $disk failed."
+
+# The Wi-Fi networks joined while trying AzrakOS on the stick come along, so the installed PC is
+# online at its first start. They go into the new system's /etc, labelled like NetworkManager's own.
+saved=(/etc/NetworkManager/system-connections/*.nmconnection)
+if [ -e "${saved[0]}" ]; then
+    progress 98 "Keeping your Wi-Fi"
+    root=$(blkid -o device -t LABEL=root "$disk"* 2>/dev/null | head -1)
+    mnt=$(mktemp -d)
+    if [ -n "$root" ] && mount "$root" "$mnt"; then
+        etc=$(ls -d "$mnt"/ostree/deploy/*/deploy/*.0/etc 2>/dev/null | head -1)
+        if [ -n "$etc" ]; then
+            install -d -m 700 "$etc/NetworkManager/system-connections"
+            cp "${saved[@]}" "$etc/NetworkManager/system-connections/"
+            chmod 600 "$etc"/NetworkManager/system-connections/*.nmconnection
+            chcon -R -t NetworkManager_etc_rw_t "$etc/NetworkManager/system-connections" 2>/dev/null || :
+        fi
+        umount "$mnt"
+    fi
+    rmdir "$mnt" 2>/dev/null
+fi
 later=
 [ -n "$nvidia" ] && [ "$tag" = minimal ] && later=1
 echo "done $tag${mok:+ mok}${later:+ nvidia-later}"
