@@ -136,6 +136,17 @@ jobs:
             for try in 1 2 3; do sudo podman push "$ref" && break; [ "$try" = 3 ] && exit 1; sleep 30; done
           done
 
+      # The installer and installed machines pull without logging in, so a private package fails
+      # every install ("unable to retrieve auth token ... unauthorized" in Anaconda). GitHub
+      # creates packages private, and only the web settings page can change that.
+      - name: Can anyone pull it?
+        if: env.SKIP != '1'
+        run: |
+          if ! skopeo inspect --no-creds --raw "docker://$IMAGE:${{ matrix.tag }}" >/dev/null; then
+            echo "::error::$IMAGE:${{ matrix.tag }} can't be pulled without logging in: make the package public at https://github.com/orgs/$GITHUB_REPOSITORY_OWNER/packages/container/azrak-os/settings (Danger Zone → Change visibility)"
+            exit 1
+          fi
+
   iso:
     needs: image
     # Only when the installer changed or when asked: the ISO installs the current image, so it
