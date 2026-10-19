@@ -19,10 +19,17 @@ podman build --build-arg CORE="$core" -f live/Containerfile -t localhost/azrak-o
 
 # The install screens are the launcher's (docs/AZRAKOS.md in azrak-launcher): a stick whose
 # launcher has none (an older release) couldn't install anything.
-if ! podman run --rm --entrypoint /usr/share/azrak-os/release/azrak localhost/azrak-os:live --supports os-install; then
-    echo "error: the launcher in $core can't install AzrakOS (azrak --supports os-install): release one that can, rebuild $core, then the stick" >&2
-    exit 1
-fi
+# (No cgroups: this already runs in a container, where podman can't make its own; nothing else needed.)
+status=0
+podman run --rm --cgroups=disabled --network=none --entrypoint /usr/share/azrak-os/release/azrak \
+    localhost/azrak-os:live --supports os-install || status=$?
+case $status in
+    0) ;;
+    1) echo "error: the launcher in $core can't install AzrakOS (azrak --supports os-install): release one that can, rebuild $core, then the stick" >&2
+       exit 1 ;;
+    *) echo "error: couldn't run the launcher in $core to check it can install AzrakOS (podman exit $status)" >&2
+       exit 1 ;;
+esac
 
 # The live system's files.
 rm -rf "$work/rootfs" "$work/iso" && mkdir -p "$work/rootfs" "$work/iso/LiveOS" "$work/iso/images/pxeboot" "$work/iso/EFI/BOOT"
