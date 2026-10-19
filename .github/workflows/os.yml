@@ -81,9 +81,21 @@ jobs:
         run: |
           owner=$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')
           echo "IMAGE=ghcr.io/$owner/azrak-os" >> "$GITHUB_ENV"
-          sudo podman build --pull=always --build-arg BASE_IMAGE=${{ matrix.base }} \
-            --build-arg VERSION="$(date -u +%Y.%m.%d)" -f ${{ matrix.file }} \
-            -t "ghcr.io/$owner/azrak-os:${{ matrix.tag }}" .
+          img="ghcr.io/$owner/azrak-os:${{ matrix.tag }}"
+          if [ "${{ matrix.tag }}" != minimal ]; then
+            sudo podman build --pull=always --build-arg BASE_IMAGE=${{ matrix.base }} \
+              --build-arg VERSION="$(date -u +%Y.%m.%d)" -f ${{ matrix.file }} -t "$img" .
+            exit 0
+          fi
+          # The minimal edition builds its own base (bootc-base-imagectl needs these privileges),
+          # then is split into one layer per package with every timestamp zeroed: a daily rebuild
+          # then only changes the layers whose packages changed, and that's all a PC downloads.
+          sudo podman build --pull=always --cap-add=all --security-opt=label=disable --device /dev/fuse \
+            --build-arg BASE_IMAGE=${{ matrix.base }} --build-arg VERSION="$(date -u +%Y.%m.%d)" \
+            -f ${{ matrix.file }} -t "$img-build" .
+          sudo podman run --rm --privileged -v /var/lib/containers:/var/lib/containers ${{ matrix.base }} \
+            /usr/libexec/bootc-base-imagectl rechunk "$img-build" "$img"
+          sudo podman rmi "$img-build"
 
       - name: Check the image
         if: matrix.tag != 'minimal'

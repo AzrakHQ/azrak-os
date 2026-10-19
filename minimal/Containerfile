@@ -2,9 +2,20 @@
 # needs (drivers and firmware, Gamescope, networking, Bluetooth, sound) and Azrak Launcher as the
 # whole screen. No desktop: the launcher's Settings → System does Wi-Fi, pairing, sound output,
 # updates and power. Updates replace the whole system atomically (bootc), with the previous one
-# kept in the boot menu. Build from this repo:  podman build -f minimal/Containerfile .
+# kept in the boot menu. Build from this repo (bootc-base-imagectl needs the extra privileges):
+#   podman build --cap-add=all --security-opt=label=disable --device /dev/fuse -f minimal/Containerfile .
+# then split it into one layer per package (the workflow does this), so updates only download what changed:
+#   podman run --rm --privileged -v /var/lib/containers:/var/lib/containers quay.io/fedora/fedora-bootc:44 \
+#     /usr/libexec/bootc-base-imagectl rechunk IMAGE-BUILT IMAGE
 ARG BASE_IMAGE=quay.io/fedora/fedora-bootc:44
-FROM ${BASE_IMAGE}
+FROM ${BASE_IMAGE} AS builder
+# Fedora's smallest bootable set (bootc, systemd, the kernel, dnf), from Fedora's own packages: its
+# standard base is a headless server (cloud SDKs, QEMU for other processors, LVM, toolbox), about a
+# fifth of the download that a console never uses.
+RUN /usr/libexec/bootc-base-imagectl build-rootfs --manifest=minimal / /target-rootfs
+
+FROM scratch
+COPY --from=builder /target-rootfs/ /
 
 RUN set -eux; \
     dnf5 -y install --setopt=install_weak_deps=False \
@@ -23,6 +34,10 @@ RUN set -eux; \
         libxkbcommon libxkbcommon-x11 libwayland-client libwayland-cursor libwayland-egl \
         alsa-lib pulseaudio-libs dbus-libs libuuid libcap libarchive mpv-libs yt-dlp \
         xdotool xprop \
+        # Not in Fedora's minimal set, but used: tar (the launcher's and emulators' updates), lspci
+        # (Settings → This PC names the graphics card), rpm-ostree (Settings → System's update
+        # status), chrony (the clock, and HTTPS needs the right time).
+        tar pciutils rpm-ostree chrony \
         fontconfig google-noto-sans-fonts google-noto-sans-arabic-fonts google-noto-emoji-fonts; \
     dnf5 clean all
 
@@ -41,7 +56,7 @@ RUN set -eux; \
     # Tells the launcher it's the whole system (Settings → System).
     mkdir -p /usr/lib/azrak-os; \
     /usr/share/azrak-os/release/azrak --version | tee /usr/lib/azrak-os/release; \
-    systemctl enable greetd.service NetworkManager.service bluetooth.service azrak-os-update.timer; \
+    systemctl enable greetd.service NetworkManager.service bluetooth.service chronyd.service azrak-os-update.timer; \
     systemctl set-default graphical.target; \
     # Anaconda (and others) set text mode (multi-user.target) as the default: the console's
     # session must start there too.
@@ -56,3 +71,7 @@ LABEL org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.description="A PC that boots straight into Azrak Launcher: Fedora bootc, Gamescope, no desktop" \
       org.opencontainers.image.source="https://github.com/AzrakHQ/azrak-os" \
       org.opencontainers.image.licenses="Apache-2.0"
+LABEL containers.bootc=1
+ENV container=oci
+STOPSIGNAL SIGRTMIN+3
+CMD ["/sbin/init"]
