@@ -16,6 +16,14 @@ on:
         description: Build the USB stick image into a new release
         type: boolean
         default: true
+      test:
+        description: "Test run: the minimal edition, its NVIDIA version and the USB stick, from this branch, under -test tags no PC uses; nothing is released"
+        type: boolean
+        default: false
+      launcher:
+        description: "A branch of AzrakHQ/azrak-launcher to build and bundle instead of its latest release (for test runs)"
+        type: string
+        default: ""
   # The stick or what it installs changed: a new USB stick image.
   push:
     branches: [main]
@@ -28,8 +36,12 @@ permissions:
   packages: write
 
 concurrency:
-  group: azrak-os
+  group: azrak-os${{ inputs.test && '-test' || '' }}
   cancel-in-progress: false
+
+env:
+  # Test runs push their images under -test tags (":minimal-test"), which no PC tracks.
+  SUFFIX: ${{ inputs.test && '-test' || '' }}
 
 jobs:
   image:
@@ -50,7 +62,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Test runs build the minimal edition only
+        if: inputs.test && matrix.tag != 'minimal'
+        run: echo "SKIP=1" >> "$GITHUB_ENV"
+
       - name: Free disk space (the base image is large)
+        if: env.SKIP != '1'
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache /usr/local/share/boost \
             /usr/local/lib/node_modules /usr/share/swift /usr/local/.ghcup /opt/microsoft || true
@@ -58,6 +75,7 @@ jobs:
           df -h /
 
       - name: Unpack the latest launcher release
+        if: env.SKIP != '1' && inputs.launcher == ''
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -67,10 +85,35 @@ jobs:
           mv /tmp/release/azrak-linux-x86_64 launcher
           launcher/azrak --version
 
+      # Test runs can bundle a launcher that isn't released yet, built from its branch the way
+      # its release workflow does (the release archive's other files come from the latest release).
+      - uses: actions/checkout@v4
+        if: env.SKIP != '1' && inputs.launcher != ''
+        with:
+          repository: AzrakHQ/azrak-launcher
+          ref: ${{ inputs.launcher }}
+          path: launcher-src
+      - uses: dtolnay/rust-toolchain@stable
+        if: env.SKIP != '1' && inputs.launcher != ''
+      - name: Build the launcher from ${{ inputs.launcher }}
+        if: env.SKIP != '1' && inputs.launcher != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq pkg-config libfontconfig1-dev libxkbcommon-dev >/dev/null
+          (cd launcher-src && cargo build --release --locked)
+          gh release download --repo AzrakHQ/azrak-launcher --pattern 'azrak-linux-x86_64.tar.gz' --dir /tmp/release
+          tar -C /tmp/release -xzf /tmp/release/azrak-linux-x86_64.tar.gz
+          mv /tmp/release/azrak-linux-x86_64 launcher
+          cp launcher-src/target/release/azrak launcher/azrak
+          cp launcher-src/install.sh launcher/install.sh
+          rm -rf launcher-src
+          launcher/azrak --version
+
       # The minimal edition runs the launcher in Gamescope, where a launcher that doesn't tag its
       # window shows nothing: publish it only with a release that does.
       - name: Does the released launcher run in Gamescope?
-        if: matrix.tag == 'minimal'
+        if: matrix.tag == 'minimal' && env.SKIP != '1'
         run: |
           if ! launcher/azrak --supports gamescope; then
             echo "::notice:::minimal not published: the latest launcher release predates Gamescope support"
@@ -82,7 +125,8 @@ jobs:
         run: |
           owner=$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')
           echo "IMAGE=ghcr.io/$owner/azrak-os" >> "$GITHUB_ENV"
-          img="ghcr.io/$owner/azrak-os:${{ matrix.tag }}"
+          echo "TAG=${{ matrix.tag }}$SUFFIX" >> "$GITHUB_ENV"
+          img="ghcr.io/$owner/azrak-os:${{ matrix.tag }}$SUFFIX"
           if [ "${{ matrix.tag }}" != minimal ]; then
             sudo podman build --pull=always --build-arg BASE_IMAGE=${{ matrix.base }} \
               --build-arg VERSION="$(date -u +%Y.%m.%d)" -f ${{ matrix.file }} -t "$img" .
@@ -99,9 +143,9 @@ jobs:
           sudo podman rmi "$img-build"
 
       - name: Check the image
-        if: matrix.tag != 'minimal'
+        if: matrix.tag != 'minimal' && env.SKIP != '1'
         run: |
-          img="$IMAGE:${{ matrix.tag }}"
+          img="$IMAGE:$TAG"
           sudo podman run --rm --entrypoint /usr/bin/bash "$img" -c '
             set -e
             test -x /usr/libexec/azrak-os/start
@@ -123,7 +167,7 @@ jobs:
       - name: Check the minimal image
         if: matrix.tag == 'minimal' && env.SKIP != '1'
         run: |
-          sudo podman run --rm --entrypoint /usr/bin/bash "$IMAGE:minimal" -c '
+          sudo podman run --rm --entrypoint /usr/bin/bash "$IMAGE:$TAG" -c '
             set -e
             test -x /usr/libexec/azrak-os/session
             test -s /usr/lib/azrak-os/release
@@ -143,9 +187,11 @@ jobs:
         if: env.SKIP != '1'
         run: |
           echo "${{ github.token }}" | sudo podman login ghcr.io -u "${{ github.actor }}" --password-stdin
-          img="$IMAGE:${{ matrix.tag }}"
-          sudo podman tag "$img" "$img-$(date -u +%Y%m%d)"
-          for ref in "$img" "$img-$(date -u +%Y%m%d)"; do
+          img="$IMAGE:$TAG"
+          refs="$img"
+          # Dated tags keep earlier versions at hand (not for test runs).
+          if [ -z "$SUFFIX" ]; then sudo podman tag "$img" "$img-$(date -u +%Y%m%d)"; refs="$refs $img-$(date -u +%Y%m%d)"; fi
+          for ref in $refs; do
             for try in 1 2 3; do sudo podman push "$ref" && break; [ "$try" = 3 ] && exit 1; sleep 30; done
           done
 
@@ -155,8 +201,8 @@ jobs:
       - name: Can anyone pull it?
         if: env.SKIP != '1'
         run: |
-          if ! skopeo inspect --no-creds --raw "docker://$IMAGE:${{ matrix.tag }}" >/dev/null; then
-            echo "::error::$IMAGE:${{ matrix.tag }} can't be pulled without logging in: make the package public at https://github.com/orgs/$GITHUB_REPOSITORY_OWNER/packages/container/azrak-os/settings (Danger Zone → Change visibility)"
+          if ! skopeo inspect --no-creds --raw "docker://$IMAGE:$TAG" >/dev/null; then
+            echo "::error::$IMAGE:$TAG can't be pulled without logging in: make the package public at https://github.com/orgs/$GITHUB_REPOSITORY_OWNER/packages/container/azrak-os/settings (Danger Zone → Change visibility)"
             exit 1
           fi
 
@@ -172,7 +218,7 @@ jobs:
         run: |
           owner=$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')
           echo "IMAGE=ghcr.io/$owner/azrak-os" >> "$GITHUB_ENV"
-          core="ghcr.io/$owner/azrak-os:minimal"
+          core="ghcr.io/$owner/azrak-os:minimal$SUFFIX"
           sudo podman pull "$core"
           kernel=$(sudo podman run --rm "$core" rpm -q --qf '%{VERSION}-%{RELEASE}.%{ARCH}' kernel-core)
           # Universal Blue builds the modules for each new Fedora kernel within about a day; until
@@ -183,12 +229,12 @@ jobs:
             exit 0
           fi
           sudo podman build --build-arg CORE="$core" --build-arg KERNEL="$kernel" -f nvidia/Containerfile \
-            -t "ghcr.io/$owner/azrak-os:minimal-nvidia" .
+            -t "ghcr.io/$owner/azrak-os:minimal-nvidia$SUFFIX" .
 
       - name: Check the image
         if: env.SKIP != '1'
         run: |
-          sudo podman run --rm --entrypoint /usr/bin/bash "$IMAGE:minimal-nvidia" -c '
+          sudo podman run --rm --entrypoint /usr/bin/bash "$IMAGE:minimal-nvidia$SUFFIX" -c '
             set -e
             kver=$(rpm -q --qf "%{VERSION}-%{RELEASE}.%{ARCH}" kernel-core)
             test "$(rpm -q --qf "%{VERSION}" kmod-nvidia)" = "$(rpm -q --qf "%{VERSION}" nvidia-driver)"
@@ -201,17 +247,18 @@ jobs:
         if: env.SKIP != '1'
         run: |
           echo "${{ github.token }}" | sudo podman login ghcr.io -u "${{ github.actor }}" --password-stdin
-          img="$IMAGE:minimal-nvidia"
-          sudo podman tag "$img" "$img-$(date -u +%Y%m%d)"
-          for ref in "$img" "$img-$(date -u +%Y%m%d)"; do
+          img="$IMAGE:minimal-nvidia$SUFFIX"
+          refs="$img"
+          if [ -z "$SUFFIX" ]; then sudo podman tag "$img" "$img-$(date -u +%Y%m%d)"; refs="$refs $img-$(date -u +%Y%m%d)"; fi
+          for ref in $refs; do
             for try in 1 2 3; do sudo podman push "$ref" && break; [ "$try" = 3 ] && exit 1; sleep 30; done
           done
 
       - name: Can anyone pull it?
         if: env.SKIP != '1'
         run: |
-          if ! skopeo inspect --no-creds --raw "docker://$IMAGE:minimal-nvidia" >/dev/null; then
-            echo "::error::$IMAGE:minimal-nvidia can't be pulled without logging in: make the package public at https://github.com/orgs/$GITHUB_REPOSITORY_OWNER/packages/container/azrak-os/settings (Danger Zone → Change visibility)"
+          if ! skopeo inspect --no-creds --raw "docker://$IMAGE:minimal-nvidia$SUFFIX" >/dev/null; then
+            echo "::error::$IMAGE:minimal-nvidia$SUFFIX can't be pulled without logging in: make the package public at https://github.com/orgs/$GITHUB_REPOSITORY_OWNER/packages/container/azrak-os/settings (Danger Zone → Change visibility)"
             exit 1
           fi
 
@@ -233,9 +280,9 @@ jobs:
       - name: Build the USB stick image
         run: |
           owner=$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')
-          sudo podman pull "ghcr.io/$owner/azrak-os:minimal"
+          sudo podman pull "ghcr.io/$owner/azrak-os:minimal$SUFFIX"
           sudo podman run --rm --privileged -v /var/lib/containers:/var/lib/containers -v "$PWD:/src" -w /src \
-            -e CORE="ghcr.io/$owner/azrak-os:minimal" -e WORK=/src/.iso-work quay.io/fedora/fedora-bootc:44 \
+            -e CORE="ghcr.io/$owner/azrak-os:minimal$SUFFIX" -e WORK=/src/.iso-work quay.io/fedora/fedora-bootc:44 \
             ./build-live-iso.sh azrak-os-x86_64.iso
           sudo chown "$(id -u):$(id -g)" azrak-os-x86_64.iso
           sha256sum azrak-os-x86_64.iso > azrak-os-x86_64.iso.sha256
@@ -244,7 +291,18 @@ jobs:
           # GitHub releases take files up to 2 GiB.
           test "$size" -lt 2147483648
 
+      # Test runs keep the stick as a workflow artifact (a few days) instead of releasing it.
+      - name: Keep the test stick
+        if: inputs.test
+        uses: actions/upload-artifact@v4
+        with:
+          name: azrak-os-x86_64-test
+          path: azrak-os-x86_64.iso*
+          retention-days: 3
+          compression-level: 0
+
       - name: Publish as a new release
+        if: ${{ !inputs.test }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -253,3 +311,17 @@ jobs:
             --title "AzrakOS $(date -u +%Y-%m-%d)" \
             --notes "Download azrak-os-x86_64.iso and write it to a USB stick (see the README). Start the PC from it to try AzrakOS, then install it from the launcher. The installed PC keeps itself and the launcher up to date." \
             azrak-os-x86_64.iso azrak-os-x86_64.iso.sha256
+
+      # One USB stick to download: the older ones (and the Fedora-installer ones before them) go,
+      # once this one is published, so nobody picks an old one by mistake.
+      - name: Remove the older USB sticks
+        if: ${{ !inputs.test }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          current="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)"
+          gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName --jq '.[].tagName' |
+            grep '^installer-' | grep -vxF "$current" | while read -r tag; do
+              echo "Removing $tag"
+              gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag
+            done

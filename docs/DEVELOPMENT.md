@@ -69,8 +69,8 @@ it, or install it.
 [Containerfile](../Containerfile) with [files/](../files/): `bazzite-deck` (or
 `bazzite-deck-nvidia`), logging straight into a Plasma session with the launcher full screen
 (no lock screen, KDE Wallet or automatic suspend). Still built daily for the PCs that have them.
-Their installer, Fedora's network installer with [azrak-os.ks](../azrak-os.ks)
-([build-iso.sh](../build-iso.sh)), is no longer built: the USB stick installs the minimal edition.
+Their installer (Fedora's network installer with a kickstart) is gone: the USB stick installs
+the minimal edition. It's in the git history before the USB stick, if it's ever needed.
 
 ## Updates
 
