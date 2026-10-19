@@ -15,7 +15,7 @@ work=${WORK:-$(mktemp -d /var/tmp/azrak-iso.XXXXXX)}
 
 dnf5 -y -q install --setopt=install_weak_deps=False xorriso squashfs-tools dosfstools mtools >/dev/null
 
-podman build --build-arg CORE="$core" -f live/Containerfile -t localhost/azrak-os:live .
+podman build --network=host --build-arg CORE="$core" -f live/Containerfile -t localhost/azrak-os:live .
 
 # The install screens are the launcher's (docs/AZRAKOS.md in azrak-launcher): a stick whose
 # launcher has none (an older release) couldn't install anything.

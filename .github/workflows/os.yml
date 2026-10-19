@@ -281,7 +281,7 @@ jobs:
         run: |
           owner=$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')
           sudo podman pull "ghcr.io/$owner/azrak-os:minimal$SUFFIX"
-          sudo podman run --rm --privileged -v /var/lib/containers:/var/lib/containers -v "$PWD:/src" -w /src \
+          sudo podman run --rm --privileged --network host -v /var/lib/containers:/var/lib/containers -v "$PWD:/src" -w /src \
             -e CORE="ghcr.io/$owner/azrak-os:minimal$SUFFIX" -e WORK=/src/.iso-work quay.io/fedora/fedora-bootc:44 \
             ./build-live-iso.sh azrak-os-x86_64.iso
           sudo chown "$(id -u):$(id -g)" azrak-os-x86_64.iso
