@@ -1,0 +1,15 @@
+# On the USB stick: podman's storage in memory (see /etc/containers/storage.conf).
+[Unit]
+Description=Container storage in memory (AzrakOS USB stick)
+ConditionKernelCommandLine=rd.live.image
+DefaultDependencies=no
+Before=local-fs.target
+
+[Mount]
+What=tmpfs
+Where=/var/lib/containers/storage
+Type=tmpfs
+Options=mode=0700,size=75%
+
+[Install]
+WantedBy=local-fs.target

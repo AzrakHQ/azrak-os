@@ -1,0 +1,19 @@
+# The AzrakOS USB stick: AzrakOS itself, started from the stick, with nothing on the PC touched
+# until you choose to install it. The launcher sees it's on the stick (rd.live.image) and offers
+# "Install AzrakOS on this PC", which runs /usr/libexec/azrak-os/install. Built into the ISO by
+# build-live-iso.sh; never pushed to a registry.
+ARG CORE=ghcr.io/azrakhq/azrak-os:minimal
+FROM ${CORE}
+
+RUN set -eux; \
+    # Starting from the stick's squashfs, with the changes kept in memory; GRUB for CDs/USB sticks.
+    dnf5 -y install --setopt=install_weak_deps=False dracut-live grub2-efi-x64-cdboot; \
+    dnf5 clean all; rm -rf /var/cache/* /var/log/*; \
+    kver=$(cd /usr/lib/modules && echo *); \
+    # /root links to /var/roothome, which only exists on an installed system (dracut follows it).
+    mkdir -p /var/roothome; \
+    dracut --force --add dmsquash-live --kver "$kver" "/usr/lib/modules/$kver/initramfs.img"; \
+    rm -rf /var/roothome
+
+COPY live/files/ /
+RUN chmod 0755 /usr/libexec/azrak-os/install && systemctl enable var-lib-containers-storage.mount

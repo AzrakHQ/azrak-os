@@ -1,0 +1,100 @@
+#!/usr/bin/bash
+# The AzrakOS installer, on the USB stick. Azrak Launcher's "Install AzrakOS on this PC" runs it:
+#   install --disks     the disks it can install on, one per line (no root needed):
+#                       disk PATH SIZE_BYTES WINDOWS(0/1) USB(0/1) MODEL…
+#   install DISK        erase DISK and install AzrakOS on it (as root, through pkexec). It prints
+#                       "progress PERCENT TEXT" as it goes, then "done TAG [mok] [nvidia-later]"
+#                       (mok: Secure Boot's key screen comes at the restart; nvidia-later: the
+#                       driver downloads on the installed system) or "error TEXT".
+# It copies the system stored on the stick (no internet needed). On a PC with an NVIDIA graphics
+# card and internet it installs the version with NVIDIA's driver, downloading only the driver;
+# without internet the installed system gets it the first time it's online (azrak-os/update).
+set -u
+repo=ghcr.io/azrakhq/azrak-os
+key=/usr/share/azrak-os/secureboot.der
+min_size=${AZRAK_MIN_DISK:-$((40 * 1000 * 1000 * 1000))}
+
+# The stick AzrakOS started from: never offered.
+live_disk() {
+    local src
+    src=$(findmnt -no SOURCE /run/initramfs/live 2>/dev/null) || return
+    lsblk -no PKNAME "$src" 2>/dev/null | head -1
+}
+
+disks() {
+    local live
+    live=$(live_disk)
+    # Raw output: one disk per line, spaces inside a value written as \x20 (the model comes last).
+    lsblk -dnbr -o NAME,PATH,SIZE,TYPE,RO,MODEL | while read -r name path size type ro model; do
+        [ "$type" = disk ] && [ "$ro" = 0 ] && [ "$name" != "$live" ] || continue
+        case "$name" in zram*|loop*|sr*) continue ;; esac
+        [ "$size" -ge "$min_size" ] 2>/dev/null || continue
+        local windows=0 usb=0
+        lsblk -nro FSTYPE "$path" | grep -qiE '^(ntfs|BitLocker)$' && windows=1
+        [ "$(lsblk -dno TRAN "$path")" = usb ] && usb=1
+        model=$(printf '%b' "$model" | tr -cd '[:print:]')
+        echo "disk $path $size $windows $usb ${model:-Disk}"
+    done
+}
+
+if [ "${1:-}" = --disks ]; then
+    disks
+    exit 0
+fi
+
+disk=${1:?usage: install --disks | install DISK}
+progress() { echo "progress $1 $2"; }
+fail() { echo "error $*"; exit 1; }
+[ "$(id -u)" = 0 ] || fail "The installer needs to run as root."
+disks | awk '{print $2}' | grep -qxF "$disk" || fail "AzrakOS can't be installed on $disk."
+
+progress 2 "Getting ready"
+tag=minimal
+nvidia=
+for dev in /sys/bus/pci/devices/*; do
+    [ "$(cat "$dev/vendor" 2>/dev/null)" = 0x10de ] && grep -q '^0x03' "$dev/class" 2>/dev/null && nvidia=1
+done
+mok=
+if [ -n "$nvidia" ]; then
+    secure=
+    mokutil --sb-state 2>/dev/null | grep -qi "SecureBoot enabled" && secure=1
+    enrolled=
+    [ -z "$secure" ] || mokutil --test-key "$key" 2>/dev/null | grep -qi "already enrolled" && enrolled=1
+    online=
+    case "$(curl -s -m 8 -o /dev/null -w '%{http_code}' https://ghcr.io/v2/)" in 200|401) online=1 ;; esac
+    # The download is kept in memory until it's installed: only with room to spare.
+    free_kb=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)
+    if [ -n "$secure" ] && [ -z "$enrolled" ]; then
+        # NVIDIA's driver is signed with Universal Blue's key. Queue it now (the blue screen at the
+        # first restart, password universalblue); the installed system switches to the NVIDIA
+        # version once it's enrolled.
+        printf 'universalblue\nuniversalblue\n' | mokutil --import "$key" >/dev/null 2>&1 && mokutil --timeout -1 >/dev/null 2>&1 && mok=1
+    elif [ -n "$online" ] && [ "${free_kb:-0}" -gt $((6 * 1024 * 1024)) ]; then
+        progress 5 "Downloading NVIDIA's driver"
+        if podman pull -q "$repo:minimal-nvidia" >/dev/null 2>&1; then
+            tag=minimal-nvidia
+        fi
+    fi
+fi
+
+progress 10 "Preparing the disk"
+# bootc installs the system from the image it runs in: the one stored on the stick (or the NVIDIA
+# one just downloaded), and the installed PC then updates from $repo:$tag.
+podman run --rm --privileged --pid=host --security-opt label=type:unconfined_t \
+    -v /dev:/dev -v /var/lib/containers:/var/lib/containers -v /run/udev:/run/udev \
+    -v /etc/containers/storage.conf:/etc/containers/storage.conf:ro -v /usr/lib/azrak-os/images:/usr/lib/azrak-os/images:ro \
+    "$repo:$tag" bootc install to-disk --wipe --target-imgref "$repo:$tag" "$disk" 2>&1 |
+while IFS= read -r line; do
+    echo "$line" >&2
+    case "$line" in
+        *"Initializing ostree layout"*) progress 20 "Preparing the disk" ;;
+        *"Deploying container image"* | *"Importing"* | *"Fetching"*) progress 35 "Copying AzrakOS" ;;
+        *"Staging"* | *"deployment"*) progress 70 "Copying AzrakOS" ;;
+        *"Installing bootloader"* | *"bootupd"*) progress 85 "Setting up the boot menu" ;;
+        *"Trimming"* | *"Finalizing"*) progress 95 "Finishing" ;;
+    esac
+done
+[ "${PIPESTATUS[0]}" = 0 ] || fail "Installing on $disk failed."
+later=
+[ -n "$nvidia" ] && [ "$tag" = minimal ] && later=1
+echo "done $tag${mok:+ mok}${later:+ nvidia-later}"

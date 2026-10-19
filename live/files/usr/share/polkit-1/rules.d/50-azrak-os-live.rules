@@ -1,0 +1,9 @@
+// On the USB stick only: the console's user, sitting at the PC, may run the installer as root
+// (pkexec, from the launcher's "Install AzrakOS on this PC"). There's no password to ask for.
+polkit.addRule(function (action, subject) {
+    if (action.id === "org.freedesktop.policykit.exec" &&
+        action.lookup("program") === "/usr/libexec/azrak-os/install" &&
+        subject.user === "player" && subject.local && subject.active) {
+        return polkit.Result.YES;
+    }
+});
