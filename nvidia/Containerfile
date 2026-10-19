@@ -1,0 +1,41 @@
+# AzrakOS for NVIDIA graphics cards: the minimal edition plus NVIDIA's own driver, as layers on
+# top of it, so a PC that has the minimal edition only downloads the driver. The 580 series
+# drives both today's cards and the GTX 900/1000 ones newer series dropped. The kernel modules
+# are Universal Blue's, built for this exact kernel and signed with their key (Secure Boot asks
+# to enroll it once). Built by the workflow after :minimal:
+#   podman build --build-arg KERNEL=$(kernel of :minimal) -f nvidia/Containerfile .
+ARG CORE=ghcr.io/azrakhq/azrak-os:minimal
+ARG KERNEL
+FROM ghcr.io/ublue-os/akmods-nvidia-lts:main-44-${KERNEL} AS nvidia
+FROM ${CORE}
+ARG KERNEL
+
+RUN --mount=type=bind,from=nvidia,src=/rpms,dst=/tmp/rpms set -eux; \
+    test "$(rpm -q --qf '%{VERSION}-%{RELEASE}.%{ARCH}' kernel-core)" = "$KERNEL"; \
+    . /tmp/rpms/kmods/nvidia-vars; \
+    v=${NVIDIA_AKMOD_VERSION%-*}; \
+    # The driver, its libraries (CUDA's too: the driver's link to it) and the kernel module; not
+    # CUDA's tools, the GTK settings app or 32-bit libraries (the minimal edition has no 32-bit
+    # graphics either).
+    dnf5 -y install --setopt=install_weak_deps=False \
+        /tmp/rpms/ublue-os/ublue-os-nvidia-addons-*.rpm \
+        /tmp/rpms/nvidia/nvidia-driver-$v-*.x86_64.rpm /tmp/rpms/nvidia/nvidia-driver-libs-$v-*.x86_64.rpm \
+        /tmp/rpms/nvidia/nvidia-kmod-common-$v-*.noarch.rpm /tmp/rpms/nvidia/nvidia-modprobe-$v-*.x86_64.rpm \
+        /tmp/rpms/nvidia/libnvidia-cfg-$v-*.x86_64.rpm /tmp/rpms/nvidia/libnvidia-ml-$v-*.x86_64.rpm \
+        /tmp/rpms/nvidia/libnvidia-gpucomp-$v-*.x86_64.rpm /tmp/rpms/nvidia/libnvidia-fbc-$v-*.x86_64.rpm \
+        /tmp/rpms/nvidia/nvidia-driver-cuda-libs-$v-*.x86_64.rpm \
+        /tmp/rpms/kmods/kmod-nvidia-$KERNEL-$NVIDIA_AKMOD_VERSION.$DIST_ARCH.rpm \
+        egl-wayland egl-gbm; \
+    test "$(rpm -q --qf '%{VERSION}' kmod-nvidia)" = "$(rpm -q --qf '%{VERSION}' nvidia-driver)"; \
+    # The repositories the add-ons package brings stay off: updates come only as new images.
+    for f in /etc/yum.repos.d/*nvidia* /etc/yum.repos.d/*negativo*; do [ -f "$f" ] && sed -i 's/^enabled=.*/enabled=0/' "$f"; done; \
+    # Load the driver early (no black screen at boot), with the PC's other graphics first.
+    sed -i -e 's@omit_drivers@force_drivers@g' -e 's@ nvidia @ i915 amdgpu nvidia @g' /usr/lib/dracut/dracut.conf.d/99-nvidia.conf; \
+    dracut --no-hostonly --reproducible --add ostree --kver "$KERNEL" -f "/usr/lib/modules/$KERNEL/initramfs.img"; \
+    dnf5 clean all; rm -rf /var/cache/* /var/log/*; find /tmp -mindepth 1 -maxdepth 1 ! -name rpms -exec rm -rf {} +; \
+    bootc container lint
+
+# Nouveau must stay away from the card, and Gamescope needs the driver's kernel modesetting.
+COPY nvidia/files/ /
+LABEL org.opencontainers.image.title="AzrakOS (minimal, NVIDIA)" \
+      org.opencontainers.image.description="AzrakOS minimal edition with NVIDIA's driver (580 series)"

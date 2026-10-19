@@ -1,0 +1,4 @@
+# NVIDIA's driver instead of nouveau, with kernel modesetting (Gamescope needs it); the firmware's
+# basic framebuffer would otherwise hold the screen before the driver loads.
+kargs = ["rd.driver.blacklist=nouveau", "modprobe.blacklist=nouveau", "nvidia-drm.modeset=1",
+    "initcall_blacklist=simpledrm_platform_driver_init"]
