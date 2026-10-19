@@ -107,7 +107,9 @@ while IFS= read -r line; do
     esac
 done
 status=${PIPESTATUS[0]}
-kill "$meter" 2>/dev/null
+# KILL: the meter is a plain loop, and a TERM can arrive blocked (a launcher that blocked it once
+# left it blocked here too, and the install never finished).
+kill -KILL "$meter" 2>/dev/null
 wait "$meter" 2>/dev/null
 [ "$status" = 0 ] || fail "Installing on $disk failed."
 
