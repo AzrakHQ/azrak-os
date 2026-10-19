@@ -11,14 +11,22 @@ seed=/usr/share/azrak-os/release
 log="$HOME/.cache/azrak-os.log"
 mkdir -p "$HOME/.cache"
 rm -f "$HOME/.cache/ps5-launcher-os.log"  # from before Azrak
+# A launcher that really runs: it answers --version. A copy cut short (the PC switched off while it
+# was copied the first time) is an empty file, which bash "runs" without complaint.
+runs() {
+    case "$("$1" --version 2>/dev/null)" in azrak* | ps5-launcher*) return 0 ;; esac
+    return 1
+}
 pick() {
     bin="$HOME/.local/bin/azrak"
-    [ -x "$bin" ] || [ ! -x "$HOME/.local/bin/ps5-launcher" ] || bin="$HOME/.local/bin/ps5-launcher"
-    if [ ! -x "$bin" ]; then
+    runs "$bin" || ! runs "$HOME/.local/bin/ps5-launcher" || bin="$HOME/.local/bin/ps5-launcher"
+    if ! runs "$bin"; then
         echo "$(date -Is) installing Azrak Launcher from the OS image" >>"$log"
+        rm -f "$bin"
         "$seed/install.sh" >>"$log" 2>&1 || { mkdir -p "${bin%/*}" && cp "$seed/azrak" "$bin"; } 2>>"$log"
+        sync "$bin" 2>/dev/null
     fi
-    [ -x "$bin" ] || bin="$seed/azrak"
+    runs "$bin" || bin="$seed/azrak"
 }
 pick
 
