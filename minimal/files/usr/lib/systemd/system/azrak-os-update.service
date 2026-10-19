@@ -1,9 +1,14 @@
 [Unit]
-Description=Download the next AzrakOS version (it starts at the next restart)
+Description=Download the next AzrakOS version, with NVIDIA's driver on an NVIDIA PC (it starts at the next restart)
 Wants=network-online.target
 After=network-online.target
+# Not on the USB stick: it runs from the stick's own copy.
+ConditionKernelCommandLine=!rd.live.image
 
 [Service]
 Type=oneshot
 # Stage only: Fedora's own bootc update timer restarts the PC by itself, mid-game.
-ExecStart=/usr/bin/bootc upgrade --quiet
+ExecStart=/usr/libexec/azrak-os/update
+# No internet yet (or the registry didn't answer): try again soon rather than tomorrow.
+Restart=on-failure
+RestartSec=15min

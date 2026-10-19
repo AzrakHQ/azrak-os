@@ -2,9 +2,10 @@
 Description=Check for a new AzrakOS version every day
 
 [Timer]
-OnBootSec=15min
+# Soon after starting: a PC installed without internet gets its NVIDIA driver the first time it's online.
+OnBootSec=3min
 OnUnitActiveSec=1d
-RandomizedDelaySec=1h
+RandomizedDelaySec=10min
 Persistent=true
 
 [Install]

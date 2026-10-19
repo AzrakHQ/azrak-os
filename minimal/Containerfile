@@ -38,8 +38,17 @@ RUN set -eux; \
         # (Settings → This PC names the graphics card), rpm-ostree (Settings → System's update
         # status), chrony (the clock, and HTTPS needs the right time).
         tar pciutils rpm-ostree chrony \
+        # The boot screen: the Azrak logo instead of text (minimal/files/…/plymouth/themes/azrak).
+        plymouth plymouth-theme-spinner \
         fontconfig google-noto-sans-fonts google-noto-sans-arabic-fonts google-noto-emoji-fonts; \
     dnf5 clean all
+
+# Universal Blue's kernel-module key: NVIDIA's driver (the :minimal-nvidia version) is signed with
+# it, and with Secure Boot on the PC needs it enrolled once (azrak-os/update queues it).
+RUN set -eux; \
+    curl -fsSL --retry 3 -o /usr/share/azrak-os-secureboot.der https://github.com/ublue-os/akmods/raw/main/certs/public_key.der; \
+    echo "4e5c68474cb133fd8984d9599762cece9100c3e6cd8a9709aeaabd85dd9e70d1  /usr/share/azrak-os-secureboot.der" | sha256sum -c -; \
+    mkdir -p /usr/share/azrak-os; mv /usr/share/azrak-os-secureboot.der /usr/share/azrak-os/secureboot.der
 
 # Shown in Settings → System (the workflow passes the build date). Declared after the packages so
 # a new version doesn't download them all again.
@@ -51,8 +60,19 @@ COPY launcher/ /usr/share/azrak-os/release/
 COPY minimal/files/ /
 
 RUN set -eux; \
-    chmod 0755 /usr/libexec/azrak-os/session /usr/share/azrak-os/release/azrak \
+    chmod 0755 /usr/libexec/azrak-os/session /usr/libexec/azrak-os/update /usr/share/azrak-os/release/azrak \
         /usr/share/azrak-os/release/install.sh; \
+    # The system calls itself AzrakOS (boot menu, Settings); the rest of os-release stays Fedora's,
+    # which tools like dnf and bootc read.
+    sed -i -e 's/^NAME=.*/NAME="AzrakOS"/' -e "s/^PRETTY_NAME=.*/PRETTY_NAME=\"AzrakOS $VERSION\"/" \
+        -e 's/^DEFAULT_HOSTNAME=.*/DEFAULT_HOSTNAME="azrakos"/' -e 's|^HOME_URL=.*|HOME_URL="https://github.com/AzrakHQ/azrak-os"|' \
+        -e 's|^SUPPORT_URL=.*|SUPPORT_URL="https://github.com/AzrakHQ/azrak-os/issues"|' \
+        -e 's|^BUG_REPORT_URL=.*|BUG_REPORT_URL="https://github.com/AzrakHQ/azrak-os/issues"|' -e '/^LOGO=/d' /usr/lib/os-release; \
+    # The boot screen, in the initramfs too so it shows from the start.
+    cp -n /usr/share/plymouth/themes/spinner/*.png /usr/share/plymouth/themes/azrak/; \
+    plymouth-set-default-theme azrak; \
+    kver=$(cd /usr/lib/modules && echo *); \
+    dracut --force --kver "$kver" "/usr/lib/modules/$kver/initramfs.img"; \
     # Tells the launcher it's the whole system (Settings → System).
     mkdir -p /usr/lib/azrak-os; \
     /usr/share/azrak-os/release/azrak --version | tee /usr/lib/azrak-os/release; \

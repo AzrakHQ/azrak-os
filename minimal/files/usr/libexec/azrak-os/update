@@ -1,0 +1,39 @@
+#!/usr/bin/bash
+# Download the next AzrakOS version (it starts at the next restart), and the right one for this
+# PC's graphics: with an NVIDIA card, the version with NVIDIA's driver (:minimal-nvidia, the
+# same system plus the driver), otherwise the plain one. So a PC installed without internet, or
+# one that gets an NVIDIA card later, gets the driver by itself. Run daily by
+# azrak-os-update.timer; staging only, never restarting (a game might be running).
+set -u
+repo=ghcr.io/azrakhq/azrak-os
+key=/usr/share/azrak-os/secureboot.der
+# What the PC starts next (spec.image.image, the first "image" in bootc's status).
+current=$(bootc status --format=json 2>/dev/null | grep -oE '"image": *"[^"]*"' | head -1 | sed -E 's/.*"([^"]*)"$/\1/')
+
+nvidia=
+for dev in /sys/bus/pci/devices/*; do
+    [ "$(cat "$dev/vendor" 2>/dev/null)" = 0x10de ] && grep -q '^0x03' "$dev/class" 2>/dev/null && nvidia=1
+done
+want=$repo:minimal
+[ -n "$nvidia" ] && want=$repo:minimal-nvidia
+
+# NVIDIA's driver is signed with Universal Blue's key: with Secure Boot on it only loads once the
+# key is enrolled (the blue screen at the next restart, password universalblue). Until then,
+# stay on the plain version, whose open driver needs no key.
+if [ "$want" = "$repo:minimal-nvidia" ] && mokutil --sb-state 2>/dev/null | grep -qi "SecureBoot enabled" &&
+    ! mokutil --test-key "$key" 2>/dev/null | grep -qi "already enrolled"; then
+    if ! mokutil --list-new 2>/dev/null | grep -q .; then
+        echo "NVIDIA card and Secure Boot: queueing Universal Blue's key for the next restart"
+        printf 'universalblue\nuniversalblue\n' | mokutil --import "$key" && mokutil --timeout -1 || :
+    fi
+    want=$repo:minimal
+fi
+
+case "$current" in
+    "$repo:minimal" | "$repo:minimal-nvidia")
+        if [ "$current" != "$want" ]; then
+            echo "Switching to $want (graphics: ${nvidia:+NVIDIA}${nvidia:-AMD/Intel})"
+            exec bootc switch --quiet "$want"
+        fi ;;
+esac
+exec bootc upgrade --quiet
