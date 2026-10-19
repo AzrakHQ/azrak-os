@@ -2,3 +2,4 @@
 launcher/
 *.iso
 *.iso.sha256
+.iso-work/

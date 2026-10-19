@@ -1,24 +1,25 @@
 name: AzrakOS
 
-# The OS images and the installer ISO.
-# - Images: ghcr.io/<owner>/azrak-os:stable (AMD/Intel) and :nvidia (Bazzite + the launcher), and
-#   :minimal (Fedora bootc + Gamescope + the launcher, minimal/). Rebuilt daily so installed
-#   machines get their base's updates and the newest launcher release; they update themselves
-#   from these tags.
-# - ISO: Fedora's network installer with azrak-os.ks. It installs the current image, so
-#   it's only rebuilt (into a new release here) when the installer changes, or when asked.
+# The OS images and the USB stick.
+# - Images: ghcr.io/<owner>/azrak-os:minimal (Fedora bootc + Gamescope + the launcher, minimal/)
+#   and :minimal-nvidia (the same plus NVIDIA's driver, nvidia/), and the Bazzite editions
+#   :stable and :nvidia. Rebuilt daily so installed machines get their base's updates and the
+#   newest launcher release; they update themselves from these tags.
+# - USB stick (build-live-iso.sh): AzrakOS started from the stick, with its own installer and
+#   the minimal edition stored on it. Installed PCs update themselves, so it's only rebuilt
+#   (into a new release here) when the stick or the edition changes, or when asked.
 
 on:
   workflow_dispatch:
     inputs:
       iso:
-        description: Build the installer ISO and attach it to the latest release
+        description: Build the USB stick image into a new release
         type: boolean
         default: true
-  # The installer changed: a new ISO.
+  # The stick or what it installs changed: a new USB stick image.
   push:
     branches: [main]
-    paths: [azrak-os.ks, build-iso.sh]
+    paths: [build-live-iso.sh, "live/**", "minimal/**", "nvidia/**"]
   schedule:
     - cron: "30 5 * * *"
 
@@ -159,28 +160,96 @@ jobs:
             exit 1
           fi
 
+  # NVIDIA's driver on top of the minimal edition just pushed, for its exact kernel: only the
+  # driver's layers differ, so that's all an NVIDIA PC downloads.
+  minimal-nvidia:
+    needs: image
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: |
+          owner=$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')
+          echo "IMAGE=ghcr.io/$owner/azrak-os" >> "$GITHUB_ENV"
+          core="ghcr.io/$owner/azrak-os:minimal"
+          sudo podman pull "$core"
+          kernel=$(sudo podman run --rm "$core" rpm -q --qf '%{VERSION}-%{RELEASE}.%{ARCH}' kernel-core)
+          # Universal Blue builds the modules for each new Fedora kernel within about a day; until
+          # then NVIDIA PCs keep the previous :minimal-nvidia.
+          if ! skopeo inspect --raw "docker://ghcr.io/ublue-os/akmods-nvidia-lts:main-44-$kernel" >/dev/null; then
+            echo "::notice::No NVIDIA modules for kernel $kernel yet: :minimal-nvidia stays as it is"
+            echo "SKIP=1" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          sudo podman build --build-arg CORE="$core" --build-arg KERNEL="$kernel" -f nvidia/Containerfile \
+            -t "ghcr.io/$owner/azrak-os:minimal-nvidia" .
+
+      - name: Check the image
+        if: env.SKIP != '1'
+        run: |
+          sudo podman run --rm --entrypoint /usr/bin/bash "$IMAGE:minimal-nvidia" -c '
+            set -e
+            kver=$(rpm -q --qf "%{VERSION}-%{RELEASE}.%{ARCH}" kernel-core)
+            test "$(rpm -q --qf "%{VERSION}" kmod-nvidia)" = "$(rpm -q --qf "%{VERSION}" nvidia-driver)"
+            find /usr/lib/modules/$kver -name "nvidia.ko*" | grep -q .
+            grep -q nvidia-drm.modeset=1 /usr/lib/bootc/kargs.d/00-nvidia.toml
+            ! grep -l "^enabled=1" /etc/yum.repos.d/*nvidia* 2>/dev/null
+            /usr/share/azrak-os/release/azrak --version'
+
+      - name: Push
+        if: env.SKIP != '1'
+        run: |
+          echo "${{ github.token }}" | sudo podman login ghcr.io -u "${{ github.actor }}" --password-stdin
+          img="$IMAGE:minimal-nvidia"
+          sudo podman tag "$img" "$img-$(date -u +%Y%m%d)"
+          for ref in "$img" "$img-$(date -u +%Y%m%d)"; do
+            for try in 1 2 3; do sudo podman push "$ref" && break; [ "$try" = 3 ] && exit 1; sleep 30; done
+          done
+
+      - name: Can anyone pull it?
+        if: env.SKIP != '1'
+        run: |
+          if ! skopeo inspect --no-creds --raw "docker://$IMAGE:minimal-nvidia" >/dev/null; then
+            echo "::error::$IMAGE:minimal-nvidia can't be pulled without logging in: make the package public at https://github.com/orgs/$GITHUB_REPOSITORY_OWNER/packages/container/azrak-os/settings (Danger Zone → Change visibility)"
+            exit 1
+          fi
+
   iso:
     needs: image
-    # Only when the installer changed or when asked: the ISO installs the current image, so it
+    # Only when the stick changed or when asked: installed PCs update themselves, so the stick
     # doesn't need rebuilding with every image update.
     if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.iso)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Build the ISO
+
+      - name: Free disk space
         run: |
-          docker run --rm --privileged -v "$PWD:/src" -w /src -e ISO_CACHE=/src fedora:44 \
-            ./build-iso.sh azrak-os-x86_64.iso
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache /usr/local/share/boost \
+            /usr/local/lib/node_modules /usr/share/swift /usr/local/.ghcup /opt/microsoft || true
+          df -h /
+
+      - name: Build the USB stick image
+        run: |
+          owner=$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')
+          sudo podman pull "ghcr.io/$owner/azrak-os:minimal"
+          sudo podman run --rm --privileged -v /var/lib/containers:/var/lib/containers -v "$PWD:/src" -w /src \
+            -e CORE="ghcr.io/$owner/azrak-os:minimal" -e WORK=/src/.iso-work quay.io/fedora/fedora-bootc:44 \
+            ./build-live-iso.sh azrak-os-x86_64.iso
+          sudo chown "$(id -u):$(id -g)" azrak-os-x86_64.iso
           sha256sum azrak-os-x86_64.iso > azrak-os-x86_64.iso.sha256
           size=$(stat -c %s azrak-os-x86_64.iso)
           echo "ISO: $size bytes"
-          test "$size" -lt 2000000000
+          # GitHub releases take files up to 2 GiB.
+          test "$size" -lt 2147483648
+
       - name: Publish as a new release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="installer-$(date -u +%Y.%m.%d-%H%M)"
           gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --latest \
-            --title "AzrakOS installer $(date -u +%Y-%m-%d)" \
-            --notes "Download azrak-os-x86_64.iso and write it to a USB stick (see the README). It installs the newest OS image, which then keeps itself and the launcher up to date." \
+            --title "AzrakOS $(date -u +%Y-%m-%d)" \
+            --notes "Download azrak-os-x86_64.iso and write it to a USB stick (see the README). Start the PC from it to try AzrakOS, then install it from the launcher. The installed PC keeps itself and the launcher up to date." \
             azrak-os-x86_64.iso azrak-os-x86_64.iso.sha256
