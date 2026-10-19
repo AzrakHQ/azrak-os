@@ -42,11 +42,12 @@ export SDL_VIDEO_DRIVER=x11 SDL_VIDEODRIVER=x11 QT_QPA_PLATFORM=xcb GDK_BACKEND=
 # downloads don't fail, but only a short one (the screen is black meanwhile, between the boot
 # screen and the launcher). The launcher retries anything that failed when the network comes up.
 nm-online -q -t 5 || echo "$(date -Is) no network yet; starting anyway" >>"$log"
-# The launcher logs "welcome screen ready" or "home screen shown" once it's on screen. If it hasn't
-# within 90 s of starting (seen once in a VM: it hung before its window, and the screen stayed black
-# for good), it's stopped and started again rather than leaving the TV black.
+# The launcher logs "window shown" once its window is up (older releases: "welcome screen ready" or
+# "home screen shown", which a launcher started on the USB stick's welcome never logs). If none
+# comes within 90 s of starting (seen once in a VM: it hung before its window, and the screen
+# stayed black for good), it's stopped and started again rather than leaving the TV black.
 shown_since() {
-    tail -c +"$(( $1 + 1 ))" "$log" 2>/dev/null | grep -qaE '\] (welcome screen ready|home screen shown)$'
+    tail -c +"$(( $1 + 1 ))" "$log" 2>/dev/null | grep -qaE '\] (window shown|welcome screen ready|home screen shown)$'
 }
 # Wait for the display server PID (Gamescope or cage) to end; true when the watchdog ended it.
 watch() {
