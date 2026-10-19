@@ -17,6 +17,13 @@ dnf5 -y -q install --setopt=install_weak_deps=False xorriso squashfs-tools dosfs
 
 podman build --build-arg CORE="$core" -f live/Containerfile -t localhost/azrak-os:live .
 
+# The install screens are the launcher's (docs/AZRAKOS.md in azrak-launcher): a stick whose
+# launcher has none (an older release) couldn't install anything.
+if ! podman run --rm --entrypoint /usr/share/azrak-os/release/azrak localhost/azrak-os:live --supports os-install; then
+    echo "error: the launcher in $core can't install AzrakOS (azrak --supports os-install): release one that can, rebuild $core, then the stick" >&2
+    exit 1
+fi
+
 # The live system's files.
 rm -rf "$work/rootfs" "$work/iso" && mkdir -p "$work/rootfs" "$work/iso/LiveOS" "$work/iso/images/pxeboot" "$work/iso/EFI/BOOT"
 cid=$(podman create localhost/azrak-os:live /bin/true)

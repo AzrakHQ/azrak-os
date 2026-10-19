@@ -1,68 +1,98 @@
 # AzrakOS: how it's built
 
-A PC that starts straight into [Azrak Launcher](https://github.com/AzrakHQ/azrak-launcher):
-[Bazzite](https://bazzite.gg)'s living-room edition (`bazzite-deck`) with the launcher added, or
-the minimal edition below. This page is for people working on it; players start at the [README](../README.md).
+A PC that starts straight into [Azrak Launcher](https://github.com/AzrakHQ/azrak-launcher). This
+page is for people working on it; players start at the [README](../README.md).
 
-**Install:** download [azrak-os-x86_64.iso](https://github.com/AzrakHQ/azrak-os/releases/latest/download/azrak-os-x86_64.iso)
-from the [latest release](https://github.com/AzrakHQ/azrak-os/releases/latest).
+There are three images and one USB stick:
 
-## Pieces
+| | What | Published as |
+|---|---|---|
+| Minimal edition ([minimal/](../minimal/)) | Fedora's smallest bootable system, Gamescope and the launcher: no desktop | `ghcr.io/azrakhq/azrak-os:minimal` (1.25 GB download) |
+| NVIDIA version ([nvidia/](../nvidia/)) | The minimal edition plus NVIDIA's driver, as layers on top | `:minimal-nvidia` (814 MB more, only for NVIDIA PCs) |
+| USB stick ([live/](../live/), [build-live-iso.sh](../build-live-iso.sh)) | AzrakOS started from the stick: try it, or install it from the launcher | `azrak-os-x86_64.iso` in the [releases](https://github.com/AzrakHQ/azrak-os/releases) (1.8 GB) |
+| Bazzite editions ([Containerfile](../Containerfile)) | Bazzite's living-room edition with the launcher | `:stable`, `:nvidia` (about 7 GB) |
 
-| File | What it does |
-|---|---|
-| [Containerfile](../Containerfile) | The OS image: `bazzite-deck` (or `bazzite-deck-nvidia`) + the latest launcher release, xdotool, mpv, yt-dlp, and the files below. |
-| [files/etc/bazzite/desktop_autologin](../files/etc/bazzite/desktop_autologin) | Bazzite's own marker: its `bazzite-autologin` service logs user 1000 into Plasma instead of Steam Gaming Mode. |
-| [files/etc/xdg/autostart/azrak-os.desktop](../files/etc/xdg/autostart/azrak-os.desktop), [files/usr/libexec/azrak-os/start](../files/usr/libexec/azrak-os/start) | Opens the launcher full screen when the session starts. On first login it installs the launcher into `~/.local/bin` (from the copy in the image) so it can update itself there. It runs on XWayland, because switching between the launcher and a game uses xdotool. |
-| `files/etc/xdg/{kscreenlockerrc,powerdevilrc,kwalletrc}` | No lock screen, no KDE Wallet prompts (nothing to type them with on a controller), no automatic suspend (downloads keep going). |
-| [azrak-os.ks](../azrak-os.ks) | Kickstart for Fedora's network installer: installs `ghcr.io/azrakhq/azrak-os:stable`, or `:nvidia` when an NVIDIA graphics card is present, and queues Bazzite's Secure Boot key (password `universalblue`) when Secure Boot is on. The installer still asks for the disk and creates the user. |
-| [build-iso.sh](../build-iso.sh) | Fedora 44's netinstall ISO + the kickstart, with the boot menu renamed: about 1.2 GB, so it fits a GitHub release (2 GB per file). Bazzite's own ISO embeds the whole OS (~8 GB). |
-| [.github/workflows/os.yml](../.github/workflows/os.yml) | Builds, checks and pushes the images daily (so installed machines get their base's updates and the newest launcher), and builds the ISO into a new release when the installer changes (or when asked). |
+The launcher is the whole screen, so the OS's own screens (Settings → SYSTEM, installing from the
+stick) are the launcher's. What each side expects from the other (the marker file, the
+installer's protocol, the permissions, `azrak --supports`) is in
+[azrak-launcher: docs/AZRAKOS.md](https://github.com/AzrakHQ/azrak-launcher/blob/main/docs/AZRAKOS.md).
 
 ## Minimal edition (minimal/)
 
-The same idea without Bazzite: Fedora's bootc base, Gamescope and the launcher, 2.9 GB instead of
-~15, published as `:minimal`. No desktop; the launcher's **Settings → System** connects to Wi-Fi,
-pairs controllers, picks the sound output, restarts, shuts down and offers system updates (it
-knows it's on the OS from `/usr/lib/azrak-os/release`).
-
 | File | What it does |
 |---|---|
-| [minimal/Containerfile](../minimal/Containerfile) | The image: drivers and firmware, Gamescope, cage, greetd, NetworkManager, BlueZ, PipeWire, the launcher's and emulators' libraries. |
-| `minimal/files/etc/greetd/config.toml`, `…/libexec/azrak-os/session` | Log `player` in at boot and run the launcher in Gamescope's Steam mode (switching between launcher and game uses its focus atoms). If Gamescope can't drive the graphics card, the launcher runs in cage so Settings → This PC can explain. The launcher is restarted if it ends. |
+| [minimal/Containerfile](../minimal/Containerfile) | Fedora's minimal bootc set (`bootc-base-imagectl build-rootfs --manifest=minimal`: bootc, systemd, the kernel, dnf), then drivers and firmware, Gamescope, cage, greetd, NetworkManager, BlueZ, PipeWire, the boot screen, and what the launcher and emulators load. Universal Blue's kernel-module key is stored for the NVIDIA version. os-release says AzrakOS. |
+| `minimal/files/etc/greetd/config.toml`, `…/libexec/azrak-os/session` | Log `player` in at boot and run the launcher in Gamescope's Steam mode (switching between launcher and game uses its focus atoms). If Gamescope can't drive the graphics card, the launcher runs in cage so Settings → This PC can explain. The launcher is restarted if it ends, and copied again from the image if its copy doesn't run. |
+| `minimal/files/usr/share/plymouth/themes/azrak/` | The boot screen: the Azrak logo on the launcher's background (Fedora's spinner images are copied in at build time). |
+| `minimal/files/usr/share/polkit-1/rules.d/50-azrak-os.rules` | `player`, at the PC, manages the network (joining a new Wi-Fi network needs it). |
 | `minimal/files/usr/lib/sysusers.d/…` | The `player` user (uid 1000, no password). |
-| `minimal/files/usr/lib/systemd/system/azrak-os-update.*` | Daily `bootc upgrade`: downloads only. Fedora's own update timer restarts the PC and is masked. |
-| `minimal/files/usr/lib/bootc/{install,kargs.d}/…` | XFS root, quiet boot, and `systemd.gpt_auto=0` (otherwise the EFI partition is mounted over `/boot` and updates fail to finish). |
+| `minimal/files/usr/libexec/azrak-os/update`, `…/systemd/system/azrak-os-update.*` | Daily, from 3 minutes after starting (and every 15 minutes while offline): stage the next version, and the right one for the graphics card (an NVIDIA PC switches to `:minimal-nvidia`; with Secure Boot on only once Universal Blue's key is enrolled, which it queues). Downloads only; Fedora's own timer, which restarts the PC, is masked. |
+| `minimal/files/usr/lib/bootc/{install,kargs.d}/…` | XFS root, quiet boot with the splash, and `systemd.gpt_auto=0` (otherwise the EFI partition is mounted over `/boot` and updates fail to finish). |
 
-The session only uses Gamescope with a launcher that supports it (`azrak --supports
-gamescope`; releases before that don't tag their window and would show nothing); an older one
-runs in cage until it updates itself. For the same reason the workflow publishes `:minimal` only
-once the latest release supports it.
+The build is a `FROM scratch` image, so the workflow splits it into one layer per package
+(`bootc-base-imagectl rechunk`, timestamps zeroed): a daily rebuild only changes the layers whose
+packages changed, and that's all a PC downloads.
 
-Not yet: a live USB and an installer for it, and the proprietary NVIDIA driver (NVIDIA cards use
-Mesa's NVK, which needs a GTX 16xx/RTX 20xx or newer).
+The session only uses Gamescope with a launcher that supports it (`azrak --supports gamescope`);
+an older one runs in cage until it updates itself. For the same reason the workflow publishes
+`:minimal` only once the latest launcher release supports it.
 
-Test it in a VM: `bootc install to-disk --via-loopback --generic-image` from the image (in a
-privileged container), then boot the disk with UEFI. A VM has no GPU Vulkan, so the launcher
-shows in cage there.
+## NVIDIA version (nvidia/)
+
+NVIDIA's 580 driver series (today's cards and the GTX 900/1000 ones newer series dropped) from
+Universal Blue's `akmods-nvidia-lts`, built for the minimal edition's exact kernel and signed
+with their key. The workflow builds it right after `:minimal`, for that image's kernel; until
+Universal Blue has modules for a new kernel (usually within a day) it keeps the previous one.
+No CUDA tools, settings app or 32-bit libraries; nouveau off, kernel modesetting on.
+
+Nobody picks it: the installer installs it on an NVIDIA PC with internet (downloading only the
+driver layers), and otherwise the installed PC switches to it by itself (`azrak-os/update`).
+
+## USB stick (live/, build-live-iso.sh)
+
+The minimal edition started from the stick (dracut's `dmsquash-live`, changes kept in memory),
+with Fedora's signed shim, GRUB and kernel, so Secure Boot works. No boot menu in sight (hold Esc
+or Shift for it). The launcher sees it's on the stick and starts with "Welcome to AzrakOS": try
+it, or install it.
+
+- The system the installer copies is stored on the stick as a read-only image store
+  (`/usr/lib/azrak-os/images`); its files are the live system's own, which mksquashfs stores once.
+  Podman's own storage is in memory on the stick.
+- [live/files/usr/libexec/azrak-os/install](../live/files/usr/libexec/azrak-os/install) lists the
+  disks and installs (`bootc install to-disk` from the stored image: no internet needed), with
+  NVIDIA's driver when it applies. A polkit rule lets `player` run it, on the stick only.
+- `build-live-iso.sh` refuses a launcher without the install screens
+  (`azrak --supports os-install`), so release the launcher before an OS change that needs it.
+
+## Bazzite editions
+
+[Containerfile](../Containerfile) with [files/](../files/): `bazzite-deck` (or
+`bazzite-deck-nvidia`), logging straight into a Plasma session with the launcher full screen
+(no lock screen, KDE Wallet or automatic suspend). Still built daily for the PCs that have them.
+Their installer, Fedora's network installer with [azrak-os.ks](../azrak-os.ks)
+([build-iso.sh](../build-iso.sh)), is no longer built: the USB stick installs the minimal edition.
 
 ## Updates
 
-- **OS:** installed machines update from `ghcr.io/azrakhq/azrak-os:<stable|nvidia|minimal>`
-  in the background, like Bazzite. A bad update can be undone from the boot menu.
+- **OS:** installed machines update from `ghcr.io/azrakhq/azrak-os:<edition>` in the background.
+  A bad update can be undone from the boot menu.
 - **Launcher, KytyPS5, shadPS4:** in the user's home folder; the launcher updates them itself.
   The copy in the image only seeds a new user.
 
 ## Build and test locally
 
+The minimal edition and the stick need a privileged Fedora bootc container with podman (`podman`
+builds `FROM scratch` with bootc-base-imagectl, and rechunks):
+
 ```bash
-# The ISO (in a Fedora container, which has mkksiso):
-docker run --rm --privileged -v "$PWD:/src" -w /src fedora:44 ./build-iso.sh azrak-os-x86_64.iso
-# An unattended test ISO: append a kickstart with the disk, user and "reboot" answered, e.g.
-#   lang/keyboard/timezone, zerombr, clearpart --all, autopart, user --name=..., reboot
-docker run --rm --privileged -v "$PWD:/src" -w /src fedora:44 ./build-iso.sh test.iso test-answers.ks
+podman build --cap-add=all --security-opt=label=disable --device /dev/fuse -f minimal/Containerfile -t localhost/azrak-os:core-build .
+podman run --rm --privileged -v /var/lib/containers:/var/lib/containers quay.io/fedora/fedora-bootc:44 \
+  /usr/libexec/bootc-base-imagectl rechunk localhost/azrak-os:core-build ghcr.io/azrakhq/azrak-os:minimal
+podman run --rm --privileged -v /var/lib/containers:/var/lib/containers -v "$PWD:/src" -w /src \
+  quay.io/fedora/fedora-bootc:44 ./build-live-iso.sh azrak-os-x86_64.iso
 ```
 
-Boot it in a UEFI VM (QEMU + OVMF, 8 GB RAM, 80 GB disk, network). The VM test checks that the
-first boot logs in by itself and opens the launcher full screen, that the launcher lives in
-`~/.local/bin` and updates itself, and that switching to a game window and back works.
+Put the launcher to bundle in `launcher/` first (the workflow unpacks the latest release there).
+Boot the ISO in a UEFI VM as a USB stick (QEMU: `-device usb-storage`, OVMF with Secure Boot,
+6 GB RAM, an empty disk) and install from the launcher. A VM has no GPU Vulkan, so the launcher
+shows in cage there, and draws slowly.
