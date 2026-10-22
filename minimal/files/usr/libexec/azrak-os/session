@@ -4,22 +4,18 @@
 #
 set -u
 # The launcher lives in the user's home folder so it can update itself; the copy in the OS image
-# only installs it the first time (or if it was removed). One from before Azrak (Azrak Launcher)
-# still has its old name until its first start as Azrak moves it over, so this is checked before
-# every start.
+# only installs it the first time (or if it was removed, or doesn't run).
 seed=/usr/share/azrak-os/release
 log="$HOME/.cache/azrak-os.log"
 mkdir -p "$HOME/.cache"
-rm -f "$HOME/.cache/ps5-launcher-os.log"  # from before Azrak
 # A launcher that really runs: it answers --version. A copy cut short (the PC switched off while it
 # was copied the first time) is an empty file, which bash "runs" without complaint.
 runs() {
-    case "$("$1" --version 2>/dev/null)" in azrak* | ps5-launcher*) return 0 ;; esac
+    case "$("$1" --version 2>/dev/null)" in azrak*) return 0 ;; esac
     return 1
 }
 pick() {
     bin="$HOME/.local/bin/azrak"
-    runs "$bin" || ! runs "$HOME/.local/bin/ps5-launcher" || bin="$HOME/.local/bin/ps5-launcher"
     if ! runs "$bin"; then
         echo "$(date -Is) installing Azrak Launcher from the OS image" >>"$log"
         rm -f "$bin"
@@ -65,7 +61,7 @@ watch() {
         # the launcher is gone, so the loop starts both again.
         if [ -n "$kiosk" ]; then
             running=
-            for child in $(pgrep -P "$pid" -x 'azrak|ps5-launcher'); do
+            for child in $(pgrep -P "$pid" -x azrak); do
                 [ "$(cut -d' ' -f3 "/proc/$child/stat" 2>/dev/null)" != Z ] && running=1
             done
             [ -n "$running" ] || [ $(( $(date +%s) - t0 )) -lt 4 ] || { kill "$pid"; break; }

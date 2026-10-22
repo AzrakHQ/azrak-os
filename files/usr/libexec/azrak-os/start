@@ -2,22 +2,18 @@
 # Opens Azrak Launcher when the console's session starts (/etc/xdg/autostart/azrak-os.desktop).
 set -u
 # The launcher lives in the user's home folder so it can update itself; the copy in the OS image
-# only installs it the first time (or if it was removed). One from before Azrak (Azrak Launcher)
-# still has its old name until its first start as Azrak moves it over, so this is checked before
-# every start.
+# only installs it the first time (or if it was removed, or doesn't run).
 seed=/usr/share/azrak-os/release
 log="$HOME/.cache/azrak-os.log"
 mkdir -p "$HOME/.cache"
-rm -f "$HOME/.cache/ps5-launcher-os.log"  # from before Azrak
 # A launcher that really runs: it answers --version. A copy cut short (the PC switched off while it
 # was copied the first time) is an empty file, which bash "runs" without complaint.
 runs() {
-    case "$("$1" --version 2>/dev/null)" in azrak* | ps5-launcher*) return 0 ;; esac
+    case "$("$1" --version 2>/dev/null)" in azrak*) return 0 ;; esac
     return 1
 }
 pick() {
     bin="$HOME/.local/bin/azrak"
-    runs "$bin" || ! runs "$HOME/.local/bin/ps5-launcher" || bin="$HOME/.local/bin/ps5-launcher"
     if ! runs "$bin"; then
         echo "$(date -Is) installing Azrak Launcher from the OS image" >>"$log"
         rm -f "$bin"
@@ -33,10 +29,6 @@ pick
 # /etc/xdg. Controllers don't count as activity, so the screen would go dark while someone
 # browses with one. Applied after that migration has run; later changes by the user are kept.
 power_done="$HOME/.config/azrak-os/power-settings-applied"
-if [ -e "$HOME/.config/ps5-launcher-os/power-settings-applied" ]; then  # from before Azrak
-    mkdir -p "${power_done%/*}" && touch "$power_done"
-fi
-rm -rf "$HOME/.config/ps5-launcher-os"
 if [ ! -e "$power_done" ]; then
     (
         sleep 20
