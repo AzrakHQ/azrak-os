@@ -85,6 +85,10 @@ processor, graphics card and memory, and we'll help.
 [Open an issue](https://github.com/AzrakHQ/azrak-os/issues/new) and describe what you see. A
 photo of the screen helps a lot.
 
+## License
+
+Free and open source under the [MIT License](LICENSE).
+
 ---
 
 <sub>AzrakOS is a small Linux built on Fedora, with Azrak Launcher as the whole screen. Want to know how it's made, or help build it? See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).</sub>
